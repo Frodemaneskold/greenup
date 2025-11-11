@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
-export default function HomeScreen() {
+export default function CreateScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Home</Text>
+      <Text style={styles.text}>Create</Text>
     </View>
   );
 }
@@ -17,8 +17,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   text: {
-    color: 'white',
+    color: 'black',
     fontSize: 24,
     fontWeight: '600',
   },
 });
+
+

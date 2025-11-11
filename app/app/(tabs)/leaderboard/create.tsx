@@ -1,0 +1,121 @@
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { createCompetition } from '@/lib/competitions-store';
+
+export default function CreateCompetitionScreen() {
+  const router = useRouter();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  const onCreate = () => {
+    if (!name.trim()) {
+      Alert.alert('Namn krävs', 'Ange ett namn för tävlingen.');
+      return;
+    }
+    const id = Date.now().toString();
+    const comp = createCompetition({
+      id,
+      name: name.trim(),
+      description: description.trim() || undefined,
+      startDate: startDate.trim() || undefined,
+      endDate: endDate.trim() || undefined,
+    });
+    Alert.alert('Tävling skapad', 'Inbjudningslänk har kopierats.');
+    router.replace({
+      pathname: '/(tabs)/leaderboard/competition/[id]',
+      params: { id: comp.id, name: comp.name },
+    });
+  };
+
+  return (
+    <View style={styles.container}>
+      <Stack.Screen options={{ title: 'Skapa tävling' }} />
+      <View style={styles.card}>
+        <Text style={styles.label}>Namn</Text>
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="T.ex. Kompisligan"
+          style={styles.input}
+        />
+
+        <Text style={styles.label}>Beskrivning (valfritt)</Text>
+        <TextInput
+          value={description}
+          onChangeText={setDescription}
+          placeholder="Kort beskrivning"
+          style={styles.input}
+        />
+
+        <Text style={styles.label}>Startdatum (valfritt)</Text>
+        <TextInput
+          value={startDate}
+          onChangeText={setStartDate}
+          placeholder="YYYY-MM-DD"
+          style={styles.input}
+        />
+
+        <Text style={styles.label}>Slutdatum (valfritt)</Text>
+        <TextInput
+          value={endDate}
+          onChangeText={setEndDate}
+          placeholder="YYYY-MM-DD"
+          style={styles.input}
+        />
+
+        <TouchableOpacity onPress={onCreate} style={styles.button}>
+          <Text style={styles.buttonText}>Skapa privat tävling</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={styles.tip}>Tävlingar är privata. Bjud in med länk eller användarnamn/e-post.</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#a7c7a3',
+    padding: 16,
+  },
+  card: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 12,
+    padding: 16,
+  },
+  label: {
+    fontWeight: '600',
+    marginTop: 12,
+    marginBottom: 6,
+    color: '#1f1f1f',
+  },
+  input: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#e1e1e1',
+  },
+  button: {
+    backgroundColor: '#2f7147',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  tip: {
+    marginTop: 12,
+    fontSize: 12,
+    color: '#1f1f1f',
+  },
+});
+
+

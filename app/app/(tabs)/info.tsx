@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
-export default function HomeScreen() {
+export default function InfoScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Home</Text>
+      <Text style={styles.text}>Info</Text>
     </View>
   );
 }
@@ -22,3 +22,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+
