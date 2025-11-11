@@ -166,6 +166,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerGlassBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(47,113,71,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(47,113,71,0.35)',
+  },
   inviteSmallBtn: {
     // removed
   },

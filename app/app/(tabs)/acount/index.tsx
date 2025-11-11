@@ -8,13 +8,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type FriendWithTotal = User & { totalCo2: number };
 
-function weeksSince(dateIso: string): number {
-  const created = new Date(dateIso).getTime();
-  const now = Date.now();
-  const diffMs = Math.max(0, now - created);
-  return Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7));
-}
-
 function computeFriendTotals(): FriendWithTotal[] {
   const comps = getCompetitions();
   const friends = getFriends();
@@ -29,10 +22,29 @@ function computeFriendTotals(): FriendWithTotal[] {
     .sort((a, b) => b.totalCo2 - a.totalCo2);
 }
 
+function computeMyRank(myId: string): number {
+  const comps = getCompetitions();
+  const friends = getFriends();
+  const totals: Record<string, number> = {};
+  for (const c of comps) {
+    for (const p of c.participants) {
+      totals[p.id] = (totals[p.id] ?? 0) + p.co2ReducedKg;
+    }
+  }
+  const myTotal = totals[myId] ?? 0;
+  const leaderboard = [
+    ...friends.map((f) => ({ id: f.id, total: totals[f.id] ?? 0 })),
+    { id: myId, total: myTotal },
+  ].sort((a, b) => b.total - a.total);
+  const idx = leaderboard.findIndex((e) => e.id === myId);
+  return idx >= 0 ? idx + 1 : 1;
+}
+
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const [me, setMe] = useState(getCurrentUser());
   const [friends, setFriends] = useState<FriendWithTotal[]>(computeFriendTotals());
+  const myRank = useMemo(() => computeMyRank(me.id), [me, friends]);
 
   useEffect(() => {
     const unsub = subscribeUsers(() => {
@@ -77,8 +89,8 @@ export default function AccountScreen() {
           </TouchableOpacity>
         </Link>
         <View style={styles.statBox}>
-          <Text style={styles.statNumber}>{weeksSince(me.createdAt)}</Text>
-          <Text style={styles.statLabel}>Tid i appen (v)</Text>
+          <Text style={styles.statNumber}>#{myRank}</Text>
+          <Text style={styles.statLabel}>Rank</Text>
         </View>
       </View>
 

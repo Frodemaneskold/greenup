@@ -25,7 +25,14 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: 16 + insets.top }]}>
-      <Text style={styles.title}>Hem</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>Hem</Text>
+        <Link href="/notifications" asChild>
+          <TouchableOpacity style={styles.headerBtn} accessibilityLabel="Visa notiser">
+            <Text style={{ color: '#fff', fontWeight: '700' }}>✉️</Text>
+          </TouchableOpacity>
+        </Link>
+      </View>
 
       <View style={styles.cards}>
         <View style={styles.card}>
@@ -40,7 +47,7 @@ export default function HomeScreen() {
 
       <Link href="/(tabs)/create" asChild>
         <TouchableOpacity style={styles.primaryBtn} accessibilityLabel="Gå till Skapa">
-          <Text style={styles.primaryBtnText}>Skapa (del 3)</Text>
+          <Text style={styles.primaryBtnText}>Skapa</Text>
         </TouchableOpacity>
       </Link>
     </View>
@@ -59,6 +66,19 @@ const styles = StyleSheet.create({
     color: '#1f1f1f',
     marginTop: 8,
     marginBottom: 16,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerBtn: {
+    backgroundColor: '#2f7147',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cards: {
     gap: 12,
