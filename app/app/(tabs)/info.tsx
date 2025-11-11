@@ -1,10 +1,50 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function InfoScreen() {
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Info</Text>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingTop: 16 + insets.top, paddingBottom: 24 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.title}>Information</Text>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Varför är det viktigt att vara hållbar?</Text>
+          <Text style={styles.paragraph}>
+            Hållbarhet minskar resursförbrukning, utsläpp och avfall, vilket förbättrar både klimat och hälsa.
+            Små förändringar i vardagen—som att resa smartare, äta mer växtbaserat och minska energiförbrukning—har
+            stor effekt när många gör dem tillsammans.
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Hur mycket vegetarisk mat hjälper klimatet?</Text>
+          <Text style={styles.paragraph}>
+            Växtbaserad kost ger ofta betydligt lägre klimatpåverkan än kött, särskilt nötkött och lamm.
+            Om fler byter några måltider i veckan till vegetariskt kan utsläppen minska markant över tid.
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Enkla steg för att komma igång</Text>
+          <Text style={styles.bullet}>• Planera vegetariska måltider ett par gånger i veckan.</Text>
+          <Text style={styles.bullet}>• Cykla, gå eller åk kollektivt där det är möjligt.</Text>
+          <Text style={styles.bullet}>• Sänk inomhustemperaturen och släck onödig belysning.</Text>
+          <Text style={styles.bullet}>• Återvinn och minska engångsartiklar.</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Tillsammans gör vi skillnad</Text>
+          <Text style={styles.paragraph}>
+            I appen kan du se din egen minskning och hur alla användare tillsammans bidrar. Ju fler som deltar,
+            desto större blir effekten.
+          </Text>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -13,13 +53,35 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#a7c7a3',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  text: {
-    color: 'white',
+  content: {
+    paddingHorizontal: 16,
+    gap: 14,
+  },
+  title: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#1f1f1f',
+    marginBottom: 4,
+  },
+  card: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 12,
+    padding: 16,
+    gap: 8,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f1f1f',
+  },
+  paragraph: {
+    color: '#2a2a2a',
+    lineHeight: 20,
+  },
+  bullet: {
+    color: '#2a2a2a',
+    lineHeight: 20,
   },
 });
 

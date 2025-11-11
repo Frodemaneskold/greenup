@@ -3,23 +3,61 @@ export type User = {
   name: string;
   username: string;
   email: string;
+  avatarUrl?: string;
+  createdAt: string; // ISO date
+  friendsCount?: number;
 };
 
-export const currentUser: User = {
+let me: User = {
   id: 'me',
   name: 'Du',
   username: 'du',
   email: 'du@example.com',
+  avatarUrl: undefined,
+  createdAt: '2025-10-01',
+  friendsCount: 3,
 };
 
-const sampleFriends: User[] = [
-  { id: '2', name: 'Anna Svensson', username: 'anna', email: 'anna@example.com' },
-  { id: '3', name: 'Leo Nilsson', username: 'leo', email: 'leo@example.com' },
-  { id: '4', name: 'Maja Karlsson', username: 'maja', email: 'maja@example.com' },
+let friends: User[] = [
+  { id: '2', name: 'Anna Svensson', username: 'anna', email: 'anna@example.com', createdAt: '2025-09-20', friendsCount: 12 },
+  { id: '3', name: 'Leo Nilsson', username: 'leo', email: 'leo@example.com', createdAt: '2025-08-15', friendsCount: 8 },
+  { id: '4', name: 'Maja Karlsson', username: 'maja', email: 'maja@example.com', createdAt: '2025-07-10', friendsCount: 15 },
 ];
 
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+function notify() {
+  listeners.forEach((l) => l());
+}
+
+export function getCurrentUser(): User {
+  return me;
+}
+
+export function updateCurrentUser(update: Partial<Pick<User, 'name' | 'username' | 'avatarUrl'>>) {
+  me = { ...me, ...update };
+  notify();
+}
+
 export function getFriends(): User[] {
-  return sampleFriends;
+  return friends;
+}
+
+export function addFriend(user: User) {
+  if (friends.some((f) => f.id === user.id || f.username === user.username)) return;
+  friends = [user, ...friends];
+  notify();
+}
+
+export function subscribeUsers(listener: Listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function getUserById(id: string): User | undefined {
+  if (id === me.id) return me;
+  return friends.find((f) => f.id === id);
 }
 
 export function isValidEmail(email: string): boolean {
