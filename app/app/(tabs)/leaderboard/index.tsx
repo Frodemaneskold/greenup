@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerGlassBtn: {
-    width: 36,
+    width: 35,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
