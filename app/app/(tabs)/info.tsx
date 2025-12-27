@@ -7,11 +7,9 @@ export default function InfoScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: 16 + insets.top, paddingBottom: 24 + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 56, paddingBottom: 24 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Information</Text>
-
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Varför är det viktigt att vara hållbar?</Text>
           <Text style={styles.paragraph}>
@@ -40,7 +38,7 @@ export default function InfoScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Tillsammans gör vi skillnad</Text>
           <Text style={styles.paragraph}>
-            I appen kan du se din egen minskning och hur alla användare tillsammans bidrar. Ju fler som deltar,
+            I GreenUp kan du se din egen minskning och hur alla användare tillsammans bidrar. Ju fler som deltar,
             desto större blir effekten.
           </Text>
         </View>
@@ -57,12 +55,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     gap: 14,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1f1f1f',
-    marginBottom: 4,
   },
   card: {
     backgroundColor: 'rgba(255,255,255,0.92)',

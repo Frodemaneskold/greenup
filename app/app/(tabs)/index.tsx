@@ -1,11 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Link } from 'expo-router';
+import HomeBg from '@/assets/images/home-bg.svg';
 import { getCompetitions } from '@/lib/competitions-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getMe } from '@/lib/api';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const [co2Saved, setCo2Saved] = useState<number | null>(null);
   const { myTotal, allTotal } = useMemo(() => {
     const comps = getCompetitions();
     let my = 0;
@@ -23,54 +26,52 @@ export default function HomeScreen() {
     return { myTotal: my, allTotal: all };
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const me = await getMe();
+        setCo2Saved(me.total_co2_saved ?? 0);
+      } catch {
+        // not logged in; keep null to fall back to local calc
+      }
+    })();
+  }, []);
+
   return (
-    <View style={[styles.container, { paddingTop: 16 + insets.top }]}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>Hem</Text>
-        <Link href="/notifications" asChild>
-          <TouchableOpacity style={styles.headerBtn} accessibilityLabel="Visa notiser">
-            <Text style={{ color: '#fff', fontWeight: '700' }}>✉️</Text>
+    <View style={styles.screen}>
+      <HomeBg width="100%" height="100%" style={StyleSheet.absoluteFill} preserveAspectRatio="xMidYMid slice" />
+      <View style={[styles.container, { paddingTop: insets.top + 56 }]}>
+
+        <View style={styles.cards}>
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>Din minskning</Text>
+            <Text style={styles.cardValue}>{((co2Saved ?? myTotal)).toFixed(1)} kg CO₂e</Text>
+          </View>
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>Allas minskning</Text>
+            <Text style={styles.cardValue}>{allTotal.toFixed(1)} kg CO₂e</Text>
+          </View>
+        </View>
+
+        <Link href="/(tabs)/create" asChild>
+          <TouchableOpacity style={styles.primaryBtn} accessibilityLabel="Gå till Skapa">
+            <Text style={styles.primaryBtnText}>Skapa</Text>
           </TouchableOpacity>
         </Link>
       </View>
-
-      <View style={styles.cards}>
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>Din minskning</Text>
-          <Text style={styles.cardValue}>{myTotal.toFixed(1)} kg CO₂e</Text>
-        </View>
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>Allas minskning</Text>
-          <Text style={styles.cardValue}>{allTotal.toFixed(1)} kg CO₂e</Text>
-        </View>
-      </View>
-
-      <Link href="/(tabs)/create" asChild>
-        <TouchableOpacity style={styles.primaryBtn} accessibilityLabel="Gå till Skapa">
-          <Text style={styles.primaryBtnText}>Skapa</Text>
-        </TouchableOpacity>
-      </Link>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#a7c7a3',
+    backgroundColor: 'transparent',
     padding: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1f1f1f',
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   headerBtn: {
     backgroundColor: '#2f7147',

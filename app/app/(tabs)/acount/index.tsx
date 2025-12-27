@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Link, Stack } from 'expo-router';
+import { Link, Stack, router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getCompetitions } from '@/lib/competitions-store';
 import { getCurrentUser, getFriends, subscribeUsers, type User } from '@/lib/users-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { isLoggedIn } from '@/lib/session';
 
 type FriendWithTotal = User & { totalCo2: number };
 
@@ -45,6 +46,15 @@ export default function AccountScreen() {
   const [me, setMe] = useState(getCurrentUser());
   const [friends, setFriends] = useState<FriendWithTotal[]>(computeFriendTotals());
   const myRank = useMemo(() => computeMyRank(me.id), [me, friends]);
+
+  useEffect(() => {
+    (async () => {
+      const ok = await isLoggedIn();
+      if (!ok) {
+        router.replace('/login');
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const unsub = subscribeUsers(() => {

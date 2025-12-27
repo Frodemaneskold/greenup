@@ -6,6 +6,11 @@ export default function LeaderboardStackLayout() {
     <Stack
       screenOptions={{
         headerShown: true,
+        headerTransparent: true,
+        headerStyle: { backgroundColor: 'transparent' },
+        headerTitleStyle: { color: '#1f1f1f' },
+        headerTintColor: '#1f1f1f',
+        headerShadowVisible: false,
       }}
     />
   );

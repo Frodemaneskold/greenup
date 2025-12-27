@@ -6,6 +6,7 @@ import { getCompetitions, subscribe } from '@/lib/competitions-store';
 import type { Competition } from '@/lib/competitions-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import BgSvg from '@/assets/images/Bakggrundscomp1.2 (kopia).svg';
 
 export default function LeaderboardListScreen() {
   const [competitions, setCompetitions] = useState<Competition[]>(getCompetitions());
@@ -54,6 +55,7 @@ export default function LeaderboardListScreen() {
 
   return (
     <View style={styles.container}>
+      <BgSvg width="100%" height="100%" style={StyleSheet.absoluteFill} preserveAspectRatio="xMidYMid slice" />
       <Stack.Screen
         options={{
           title: 'Tävlingar',
@@ -81,7 +83,13 @@ export default function LeaderboardListScreen() {
           data={competitions}
           keyExtractor={(c) => c.id}
           renderItem={renderItem}
-          contentContainerStyle={[styles.listContent, { paddingBottom: 60 + insets.bottom + tabBarHeight }]}
+          contentContainerStyle={[
+            styles.listContent,
+            {
+              paddingTop: insets.top + 56,
+              paddingBottom: 60 + insets.bottom + tabBarHeight,
+            },
+          ]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         />
       )}
@@ -92,17 +100,18 @@ export default function LeaderboardListScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#a7c7a3',
+    backgroundColor: 'transparent',
   },
   listContent: {
     paddingVertical: 12,
+    paddingHorizontal: 16,
     paddingBottom: 120,
   },
   row: {
     paddingHorizontal: 16,
     paddingVertical: 14,
     backgroundColor: 'rgba(255,255,255,0.85)',
-    marginHorizontal: 12,
+    marginHorizontal: 0,
     marginBottom: 10,
     borderRadius: 12,
     flexDirection: 'row',

@@ -82,7 +82,13 @@ export default function CompetitionDetailScreen() {
           data={sorted}
           keyExtractor={(p) => p.id}
           renderItem={renderItem}
-          contentContainerStyle={[styles.listContent, { paddingBottom: 100 + insets.bottom + tabBarHeight }]}
+          contentContainerStyle={[
+            styles.listContent,
+            {
+              paddingTop: insets.top + 56,
+              paddingBottom: 100 + insets.bottom + tabBarHeight,
+            },
+          ]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         />
       )}

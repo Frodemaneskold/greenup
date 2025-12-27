@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { getCurrentUser, getFriends, isValidUsername, updateCurrentUser } from '@/lib/users-store';
+import { clearToken } from '@/lib/session';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -51,6 +52,17 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
       <Text style={styles.hint}>Profilbildsuppdatering kan läggas till senare.</Text>
+      <View style={{ flex: 1 }} />
+      <TouchableOpacity
+        accessibilityLabel="Logga ut"
+        onPress={async () => {
+          await clearToken();
+          router.replace('/login');
+        }}
+        style={styles.logoutBtn}
+      >
+        <Text style={styles.logoutText}>Logga ut</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -96,6 +108,18 @@ const styles = StyleSheet.create({
     marginTop: 12,
     color: '#1f1f1f',
     fontSize: 12,
+  },
+  logoutBtn: {
+    backgroundColor: '#b83a3a',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  logoutText: {
+    color: '#fff',
+    fontWeight: '700',
   },
 });
 

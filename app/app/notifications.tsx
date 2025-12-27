@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { Stack } from 'expo-router';
-import { getNotifications, subscribeNotifications, type AppNotification } from '@/lib/notifications-store';
+import { getNotifications, subscribeNotifications, type AppNotification, removeNotification } from '@/lib/notifications-store';
+import { addFriend } from '@/lib/users-store';
 
 export default function NotificationsScreen() {
   const [items, setItems] = useState<AppNotification[]>(getNotifications());
@@ -25,19 +26,48 @@ export default function NotificationsScreen() {
           data={items}
           keyExtractor={(n) => n.id}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <View style={styles.row}>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>
-                  {item.type === 'friend_request' ? 'Vän' : item.type === 'activity' ? 'Akt' : 'Info'}
-                </Text>
+          renderItem={({ item }) => {
+            const isFriendReq = item.type === 'friend_request' && item.payload?.fromUser;
+            return (
+              <View style={styles.row}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {item.type === 'friend_request' ? 'Vän' : item.type === 'activity' ? 'Akt' : 'Info'}
+                  </Text>
+                </View>
+                <View style={styles.main}>
+                  <Text style={styles.title}>{item.title}</Text>
+                  {item.message ? <Text style={styles.msg}>{item.message}</Text> : null}
+                  {isFriendReq ? (
+                    <View style={styles.actions}>
+                      <TouchableOpacity
+                        style={[styles.actionBtn, styles.accept]}
+                        onPress={() => {
+                          const u = item.payload!.fromUser!;
+                          addFriend({
+                            id: u.id,
+                            username: u.username,
+                            name: u.name,
+                            email: `${u.username}@example.com`,
+                            createdAt: new Date().toISOString().slice(0, 10),
+                          });
+                          removeNotification(item.id);
+                        }}
+                      >
+                        <Text style={styles.actionText}>Acceptera</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionBtn, styles.decline]}
+                        onPress={() => removeNotification(item.id)}
+                      >
+                        <Text style={styles.actionText}>Avböj</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                </View>
               </View>
-              <View style={styles.main}>
-                <Text style={styles.title}>{item.title}</Text>
-                {item.message ? <Text style={styles.msg}>{item.message}</Text> : null}
-              </View>
-            </View>
-          )}
+            );
+          }}
         />
       )}
     </View>
@@ -66,6 +96,11 @@ const styles = StyleSheet.create({
   main: { flex: 1 },
   title: { fontWeight: '700', color: '#1f1f1f' },
   msg: { color: '#2a2a2a', marginTop: 2 },
+  actions: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  actionBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 },
+  accept: { backgroundColor: '#2f7147' },
+  decline: { backgroundColor: '#b83a3a' },
+  actionText: { color: '#fff', fontWeight: '700' },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { color: '#1f1f1f' },
 });

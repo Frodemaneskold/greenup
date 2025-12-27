@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { createCompetition } from '@/lib/competitions-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function CreateCompetitionScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -31,7 +33,7 @@ export default function CreateCompetitionScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 72, paddingBottom: 16 + insets.bottom }]}>
       <Stack.Screen options={{ title: 'Skapa tävling' }} />
       <View style={styles.card}>
         <Text style={styles.label}>Namn</Text>
@@ -79,7 +81,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#a7c7a3',
-    padding: 16,
+    paddingHorizontal: 16,
   },
   card: {
     backgroundColor: 'rgba(255,255,255,0.9)',

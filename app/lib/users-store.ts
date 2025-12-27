@@ -15,14 +15,10 @@ let me: User = {
   email: 'du@example.com',
   avatarUrl: undefined,
   createdAt: '2025-10-01',
-  friendsCount: 3,
+  friendsCount: 0,
 };
 
-let friends: User[] = [
-  { id: '2', name: 'Anna Svensson', username: 'anna', email: 'anna@example.com', createdAt: '2025-09-20', friendsCount: 12 },
-  { id: '3', name: 'Leo Nilsson', username: 'leo', email: 'leo@example.com', createdAt: '2025-08-15', friendsCount: 8 },
-  { id: '4', name: 'Maja Karlsson', username: 'maja', email: 'maja@example.com', createdAt: '2025-07-10', friendsCount: 15 },
-];
+let friends: User[] = [];
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -47,6 +43,7 @@ export function getFriends(): User[] {
 export function addFriend(user: User) {
   if (friends.some((f) => f.id === user.id || f.username === user.username)) return;
   friends = [user, ...friends];
+  me = { ...me, friendsCount: (me.friendsCount ?? 0) + 1 };
   notify();
 }
 

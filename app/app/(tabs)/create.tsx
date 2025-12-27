@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ImageBackground, Pressable, Image } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getCategories, getTodayCount, incrementAction, subscribeActions, type CategoryGroup } from '@/lib/actions-store';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -8,6 +9,7 @@ export default function CreateScreen() {
   const insets = useSafeAreaInsets();
   const [categories] = useState<CategoryGroup[]>(getCategories());
   const [, setTick] = useState(0);
+  const [selectedAction, setSelectedAction] = useState<{ id: string; name: string; description?: string } | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     handlingar: false,
     mat: false,
@@ -38,18 +40,36 @@ export default function CreateScreen() {
     setTick((t) => t + 1);
   };
 
+  const openConfirm = (action: { id: string; name: string; description?: string }) => {
+    setSelectedAction(action);
+  };
+
+  const confirmDo = () => {
+    if (selectedAction) {
+      onDo(selectedAction.id);
+      setSelectedAction(null);
+    }
+  };
+
+  const closeConfirm = () => {
+    setSelectedAction(null);
+  };
+
   const toggle = (id: string) => {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   return (
     <View style={styles.container}>
+      <ImageBackground
+        source={require('@/assets/images/Vandring.png')}
+        resizeMode="cover"
+        style={StyleSheet.absoluteFill}
+      />
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: 16 + insets.top, paddingBottom: 24 + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 56, paddingBottom: 24 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Skapa</Text>
-
         {categories.map((cat) => (
           <View key={cat.id} style={styles.section}>
             <TouchableOpacity
@@ -81,7 +101,7 @@ export default function CreateScreen() {
                       <View style={[styles.progressFill, { width: `${percent}%` }]} />
                     </View>
                     <TouchableOpacity
-                      onPress={() => onDo(a.id)}
+                      onPress={() => openConfirm({ id: a.id, name: a.name, description: a.description })}
                       style={[styles.doBtn, disabled && styles.doBtnDisabled]}
                       disabled={disabled}
                       accessibilityLabel={`Utför ${a.name}`}
@@ -94,6 +114,43 @@ export default function CreateScreen() {
           </View>
         ))}
       </ScrollView>
+
+      {selectedAction && (
+        <View style={styles.modalWrap} pointerEvents="box-none">
+          <BlurView
+            intensity={35}
+            tint="light"
+            experimentalBlurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.modalCenter} pointerEvents="box-none">
+            <Pressable style={styles.modalCard} accessibilityRole="dialog" accessibilityLabel={selectedAction.name}>
+              <Text style={styles.modalTitle}>{selectedAction.name}</Text>
+              <View style={styles.modalIllustration}>
+                <Image
+                  source={require('@/assets/images/Pantbild.png')}
+                  style={styles.modalIllustrationImg}
+                  resizeMode="cover"
+                  accessible
+                  accessibilityLabel="Illustration för Panta"
+                />
+              </View>
+              <Text style={styles.modalText}>
+                {selectedAction.description ??
+                  'Att panta sparar energi och minskar behovet av nya råvaror. Fortsätt bidra!'}
+              </Text>
+              <View style={styles.modalBtns}>
+                <TouchableOpacity onPress={closeConfirm} style={[styles.modalBtn, styles.modalCancel]}>
+                  <Text style={styles.modalBtnCancelText}>Avbryt</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={confirmDo} style={[styles.modalBtn, styles.modalPrimary]}>
+                  <Text style={styles.modalBtnText}>Gör</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -101,17 +158,11 @@ export default function CreateScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#a7c7a3',
+    backgroundColor: 'transparent',
   },
   content: {
     paddingHorizontal: 16,
     gap: 14,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1f1f1f',
-    marginBottom: 4,
   },
   section: {
     gap: 8,
@@ -177,6 +228,74 @@ const styles = StyleSheet.create({
   doBtnText: {
     color: '#fff',
     fontWeight: '700',
+  },
+  modalWrap: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+  },
+  modalCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalCard: {
+    width: '92%',
+    maxWidth: 560,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 16,
+    padding: 18,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f1f1f',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  modalIllustration: {
+    width: '100%',
+    height: 140,
+    borderRadius: 12,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  modalIllustrationImg: {
+    width: '100%',
+    height: '100%',
+  },
+  modalText: {
+    color: '#2a2a2a',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  modalBtns: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  modalBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  modalCancel: {
+    backgroundColor: '#e53935',
+    minWidth: 96,
+  },
+  modalPrimary: {
+    backgroundColor: '#2f7147',
+    flex: 1,
+  },
+  modalBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  modalBtnCancelText: {
+    color: '#fff',
+    fontWeight: '700',
+    textAlign: 'center',
   },
 });
 

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { Stack } from 'expo-router';
-import { addFriend, isValidEmail, isValidUsername, type User } from '@/lib/users-store';
+import { isValidEmail, isValidUsername, type User } from '@/lib/users-store';
+import { addFriendRequestNotification } from '@/lib/notifications-store';
 
 export default function SearchFriendScreen() {
   const [query, setQuery] = useState('');
@@ -39,8 +40,9 @@ export default function SearchFriendScreen() {
     }
     setSubmitting(true);
     try {
-      addFriend(newFriend);
-      Alert.alert('Vän tillagd');
+      // Skicka vänförfrågan som notis till mottagaren (demo: visas i vår notisskärm)
+      addFriendRequestNotification({ id: newFriend.id, username: newFriend.username, name: newFriend.name });
+      Alert.alert('Vänförfrågan skickad', `@${newFriend.username} har fått en förfrågan.`);
       setQuery('');
     } finally {
       setSubmitting(false);
@@ -61,7 +63,7 @@ export default function SearchFriendScreen() {
           style={styles.input}
         />
         <TouchableOpacity style={[styles.button, submitting && styles.disabled]} onPress={onAdd} disabled={submitting}>
-          <Text style={styles.buttonText}>Lägg till vän</Text>
+          <Text style={styles.buttonText}>Skicka vänförfrågan</Text>
         </TouchableOpacity>
       </View>
     </View>
