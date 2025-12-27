@@ -1,0 +1,94 @@
+env: load .env
+env: export EXPO_PUBLIC_API_URL
+Starting project at /Users/frodemaneskold/Desktop/Justus/greenup/app
+React Compiler enabled
+Metro is running in CI mode, reloads are disabled. Remove CI=true to enable watch mode.
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Unable to run simctl:
+Error: xcrun simctl help exited with non-zero code: 72
+Tunnel connected.
+Tunnel ready.
+The following packages should be updated for best compatibility with the installed expo version:
+  expo@54.0.23 - expected version: ~54.0.25
+  expo-linking@8.0.8 - expected version: ~8.0.9
+  expo-router@6.0.14 - expected version: ~6.0.15
+  expo-splash-screen@31.0.10 - expected version: ~31.0.11
+Your project may not work correctly until you install the expected versions of the packages.
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+Web node_modules/expo-router/entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 93.6% (629/650)
+λ node_modules/expo-router/node/render.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 90.9% (592/621)
+Web Bundling failed 3538ms node_modules/expo-router/entry.js (650 modules)
+λ Bundling failed 3542ms node_modules/expo-router/node/render.js (621 modules)
+
+Metro error: node_modules/expo-router/_ctx.web.js: node_modules/expo-router/_ctx.web.js:Invalid call at line 2: process.env.EXPO_ROUTER_APP_ROOT
+First argument of `require.context` should be a string denoting the directory to require.
+
+  Error: node_modules/expo-router/_ctx.web.js:Invalid call at line 2: process.env.EXPO_ROUTER_APP_ROOT
+First argument of `require.context` should be a string denoting the directory to require.
+    at transformJS (/Users/frodemaneskold/Desktop/Justus/greenup/app/node_modules/@expo/metro-config/build/transform-worker/metro-transform-worker.js:337:23)
+    at transformJSWithBabel (/Users/frodemaneskold/Desktop/Justus/greenup/app/node_modules/@expo/metro-config/build/transform-worker/metro-transform-worker.js:487:18)
+Web node_modules/expo-router/_error.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 1069ms node_modules/expo-router/_error.js (318 modules)
+ LOG  [web] Logs will appear in the browser console
+λ Bundling failed 258ms node_modules/expo-router/node/render.js (532 modules)
+
+Metro error: node_modules/expo-router/_ctx.web.js: node_modules/expo-router/_ctx.web.js:Invalid call at line 2: process.env.EXPO_ROUTER_APP_ROOT
+First argument of `require.context` should be a string denoting the directory to require.
+
+  Error: node_modules/expo-router/_ctx.web.js:Invalid call at line 2: process.env.EXPO_ROUTER_APP_ROOT
+First argument of `require.context` should be a string denoting the directory to require.
+    at transformJS (/Users/frodemaneskold/Desktop/Justus/greenup/app/node_modules/@expo/metro-config/build/transform-worker/metro-transform-worker.js:337:23)
+    at transformJSWithBabel (/Users/frodemaneskold/Desktop/Justus/greenup/app/node_modules/@expo/metro-config/build/transform-worker/metro-transform-worker.js:487:18)
+Web Bundling failed 263ms node_modules/expo-router/entry.js (1 module)
+λ Bundling failed 186ms node_modules/expo-router/node/render.js (1 module)
+
+Metro error: node_modules/expo-router/_ctx.web.js: node_modules/expo-router/_ctx.web.js:Invalid call at line 2: process.env.EXPO_ROUTER_APP_ROOT
+First argument of `require.context` should be a string denoting the directory to require.
+
+  Error: node_modules/expo-router/_ctx.web.js:Invalid call at line 2: process.env.EXPO_ROUTER_APP_ROOT
+First argument of `require.context` should be a string denoting the directory to require.
+    at transformJS (/Users/frodemaneskold/Desktop/Justus/greenup/app/node_modules/@expo/metro-config/build/transform-worker/metro-transform-worker.js:337:23)
+    at transformJSWithBabel (/Users/frodemaneskold/Desktop/Justus/greenup/app/node_modules/@expo/metro-config/build/transform-worker/metro-transform-worker.js:487:18)
+Web Bundling failed 191ms node_modules/expo-router/entry.js (656 modules)
+
+> app@1.0.0 start
+> expo start --tunnel
+
+
+> app@1.0.0 start
+> expo start --tunnel
+
+
+> app@1.0.0 start
+> expo start --lan
+
+
+> app@1.0.0 start
+> expo start --tunnel --non-interactive
+
+env: load .env
+env: export EXPO_PUBLIC_API_URL
+Starting project at /Users/frodemaneskold/Desktop/Justus/greenup/app
+React Compiler enabled
+Starting Metro Bundler
+Tunnel connected.
+Tunnel ready.
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+
+> app@1.0.0 start
+> expo start --tunnel --non-interactive
+
+env: load .env
+env: export EXPO_PUBLIC_API_URL
+Starting project at /Users/frodemaneskold/Desktop/Justus/greenup/app
+React Compiler enabled
+Starting Metro Bundler
+Tunnel connected.
+Tunnel connected.
+Tunnel ready.
+Waiting on http://localhost:8081
+Logs for your project will appear below.
