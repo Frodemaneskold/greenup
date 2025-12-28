@@ -1,62 +1,121 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ImageBackground, Pressable, Image } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ImageBackground, Pressable, Image, RefreshControl, Alert } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getCategories, getTodayCount, incrementAction, subscribeActions, type CategoryGroup } from '@/lib/actions-store';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { fetchMissions, fetchTodayCounts, logUserAction, type Mission } from '@/src/services/missions';
 
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
-  const [categories] = useState<CategoryGroup[]>(getCategories());
-  const [, setTick] = useState(0);
-  const [selectedAction, setSelectedAction] = useState<{ id: string; name: string; description?: string } | null>(null);
+  const [missions, setMissions] = useState<Mission[]>([]);
+  const [selectedMission, setSelectedMission] = useState<Mission | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    handlingar: false,
-    mat: false,
     transport: false,
+    mat: false,
+    'återvinning': false,
+    konsumtion: false,
+    hem: false,
   });
-  const [countsMap, setCountsMap] = useState<Record<string, number>>(() => {
-    const initial: Record<string, number> = {};
-    getCategories().forEach((cat) => {
-      cat.actions.forEach((a) => {
-        initial[a.id] = getTodayCount(a.id);
-      });
-    });
-    return initial;
-  });
+  const [countsMap, setCountsMap] = useState<Record<string, number>>({});
 
-  useEffect(() => {
-    const unsub = subscribeActions(() => setTick((t) => t + 1));
-    return () => {
-      unsub();
-    };
-  }, []);
+  const CATEGORIES = useMemo(
+    () => [
+      { key: 'transport', label: 'Transport' },
+      { key: 'mat', label: 'Mat' },
+      { key: 'återvinning', label: 'Återvinning' },
+      { key: 'konsumtion', label: 'Konsumtion' },
+      { key: 'hem', label: 'Hem' },
+    ] as const,
+    []
+  );
 
-  const onDo = (actionId: string) => {
-    incrementAction(actionId);
-    const fresh = getTodayCount(actionId);
-    // Update local counts map immediately for instant UI feedback
-    setCountsMap((prev) => ({ ...prev, [actionId]: fresh }));
-    setTick((t) => t + 1);
-  };
-
-  const openConfirm = (action: { id: string; name: string; description?: string }) => {
-    setSelectedAction(action);
-  };
-
-  const confirmDo = () => {
-    if (selectedAction) {
-      onDo(selectedAction.id);
-      setSelectedAction(null);
+  const groupedByCategory = useMemo(() => {
+    const groups: Record<string, Mission[]> = {};
+    for (const c of CATEGORIES) {
+      groups[c.key] = [];
     }
+    // Helper: normalize incoming DB category to one of our static keys
+    const sanitize = (v: string) =>
+      v
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, ''); // strip diacritics
+    const normalizeKey = (raw: string): typeof CATEGORIES[number]['key'] | null => {
+      const s = sanitize(raw);
+      // direct matches to our keys
+      if (s === 'transport') return 'transport';
+      if (s === 'mat' || s === 'food' || s === 'kost') return 'mat';
+      if (s === 'atervinning' || s === 'recycling') return 'återvinning';
+      if (s === 'konsumtion' || s === 'consumption' || s === 'shopping' || s === 'inkop' || s === 'inköp')
+        return 'konsumtion';
+      if (s === 'hem' || s === 'home' || s === 'household' || s === 'bostad') return 'hem';
+      // attempt exact diacritic form (if DB happens to use it)
+      if (raw === 'återvinning') return 'återvinning';
+      // unknown -> null (we will optionally fall back)
+      return null;
+    };
+    for (const m of missions) {
+      const key = normalizeKey(m.category) ?? 'konsumtion'; // fallback to a visible category
+      groups[key].push(m);
+    }
+    return groups;
+  }, [missions, CATEGORIES]);
+
+  const openConfirm = (mission: Mission) => {
+    setSelectedMission(mission);
+  };
+
+  const confirmDo = async () => {
+    if (!selectedMission) return;
+    const current = countsMap[selectedMission.id] ?? 0;
+    const max = Math.max(0, selectedMission.max_per_day ?? 0);
+    if (current >= max) {
+      Alert.alert('Gräns nådd', 'Du har nått max för idag.');
+      setSelectedMission(null);
+      return;
+    }
+    try {
+      await logUserAction(selectedMission);
+      setCountsMap((prev) => ({ ...prev, [selectedMission.id]: (prev[selectedMission.id] ?? 0) + 1 }));
+    } catch (e: any) {
+      Alert.alert('Fel', e?.message ?? 'Kunde inte logga handlingen.');
+    }
+    setSelectedMission(null);
   };
 
   const closeConfirm = () => {
-    setSelectedAction(null);
+    setSelectedMission(null);
   };
 
   const toggle = (id: string) => {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const loadData = async () => {
+    try {
+      const list = await fetchMissions();
+      setMissions(list);
+      const ids = list.map((m) => m.id);
+      const counts = await fetchTodayCounts(ids);
+      setCountsMap(counts);
+    } catch (e: any) {
+      // Surface a helpful error so it's clear why categories are empty
+      Alert.alert('Fel vid hämtning', e?.message ?? 'Kunde inte hämta uppdrag. Kontrollera anslutning och behörigheter.');
+      setMissions([]);
+      setCountsMap({});
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
   };
 
   return (
@@ -69,53 +128,61 @@ export default function CreateScreen() {
       <ScrollView
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 56, paddingBottom: 24 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {categories.map((cat) => (
-          <View key={cat.id} style={styles.section}>
+        {CATEGORIES.map((cat) => (
+          <View key={cat.key} style={styles.section}>
             <TouchableOpacity
-              onPress={() => toggle(cat.id)}
+              onPress={() => toggle(cat.key)}
               style={styles.sectionHeader}
-              accessibilityLabel={`Växla ${cat.title}`}
+              accessibilityLabel={`Växla ${cat.label}`}
             >
-              <Text style={styles.sectionTitle}>{cat.title}</Text>
+              <Text style={styles.sectionTitle}>{cat.label}</Text>
               <IconSymbol
                 name="chevron.down"
                 size={16}
                 color="#1f1f1f"
-                style={{ transform: [{ rotate: expanded[cat.id] ? '180deg' : '0deg' }] }}
+                style={{ transform: [{ rotate: expanded[cat.key] ? '180deg' : '0deg' }] }}
               />
             </TouchableOpacity>
-            {expanded[cat.id] &&
-              cat.actions.map((a) => {
-              const count = countsMap[a.id] ?? getTodayCount(a.id);
-                const percent = Math.min(100, Math.round((count / 3) * 100));
-                const disabled = count >= 3;
-                return (
-                  <View key={a.id} style={styles.card}>
-                    <View style={styles.cardHeader}>
-                      <Text style={styles.cardName}>{a.name}</Text>
-                      <Text style={styles.cardCount}>Idag: {count} / 3</Text>
-                    </View>
-                    {a.description ? <Text style={styles.cardDesc}>{a.description}</Text> : null}
-                    <View style={styles.progressBar}>
-                      <View style={[styles.progressFill, { width: `${percent}%` }]} />
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => openConfirm({ id: a.id, name: a.name, description: a.description })}
-                      style={[styles.doBtn, disabled && styles.doBtnDisabled]}
-                      disabled={disabled}
-                      accessibilityLabel={`Utför ${a.name}`}
-                    >
-                      <Text style={styles.doBtnText}>{disabled ? 'Max utförd idag' : 'Gör'}</Text>
-                    </TouchableOpacity>
+            {expanded[cat.key] &&
+              (groupedByCategory[cat.key]?.length
+                ? groupedByCategory[cat.key].map((m) => {
+                    const count = countsMap[m.id] ?? 0;
+                    const max = Math.max(1, m.max_per_day ?? 1);
+                    const percent = Math.min(100, Math.round((count / max) * 100));
+                    const disabled = count >= max;
+                    return (
+                      <View key={m.id} style={styles.card}>
+                        <View style={styles.cardHeader}>
+                          <Text style={styles.cardName}>{m.title}</Text>
+                          <Text style={styles.cardCount}>Idag: {count} / {max}</Text>
+                        </View>
+                        {m.description ? <Text style={styles.cardDesc}>{m.description}</Text> : null}
+                        <View style={styles.progressBar}>
+                          <View style={[styles.progressFill, { width: `${percent}%` }]} />
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => openConfirm(m)}
+                          style={[styles.doBtn, disabled && styles.doBtnDisabled]}
+                          disabled={disabled}
+                          accessibilityLabel={`Utför ${m.title}`}
+                        >
+                          <Text style={styles.doBtnText}>{disabled ? 'Max utförd idag' : 'Gör'}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })
+                : (
+                  <View style={styles.emptyWrap}>
+                    <Text style={styles.emptyText}>Inga uppdrag ännu.</Text>
                   </View>
-                );
-              })}
+                ))}
           </View>
         ))}
       </ScrollView>
 
-      {selectedAction && (
+      {selectedMission && (
         <View style={styles.modalWrap} pointerEvents="box-none">
           <BlurView
             intensity={35}
@@ -124,8 +191,8 @@ export default function CreateScreen() {
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.modalCenter} pointerEvents="box-none">
-            <Pressable style={styles.modalCard} accessibilityRole="dialog" accessibilityLabel={selectedAction.name}>
-              <Text style={styles.modalTitle}>{selectedAction.name}</Text>
+            <Pressable style={styles.modalCard} accessibilityRole="dialog" accessibilityLabel={selectedMission.title}>
+              <Text style={styles.modalTitle}>{selectedMission.title}</Text>
               <View style={styles.modalIllustration}>
                 <Image
                   source={require('@/assets/images/Pantbild.png')}
@@ -136,7 +203,7 @@ export default function CreateScreen() {
                 />
               </View>
               <Text style={styles.modalText}>
-                {selectedAction.description ??
+                {selectedMission.description ??
                   'Att panta sparar energi och minskar behovet av nya råvaror. Fortsätt bidra!'}
               </Text>
               <View style={styles.modalBtns}>
@@ -205,6 +272,16 @@ const styles = StyleSheet.create({
   },
   cardDesc: {
     color: '#2a2a2a',
+  },
+  emptyWrap: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#2a2a2a',
+    fontStyle: 'italic',
   },
   progressBar: {
     height: 10,
