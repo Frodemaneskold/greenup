@@ -6,6 +6,7 @@ import { getCompetitions } from '@/lib/competitions-store';
 import { getCurrentUser, getFriends, subscribeUsers, type User } from '@/lib/users-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isLoggedIn } from '@/lib/session';
+import { supabase } from '@/src/lib/supabase';
 
 type FriendWithTotal = User & { totalCo2: number };
 
@@ -49,9 +50,50 @@ export default function AccountScreen() {
 
   useEffect(() => {
     (async () => {
-      const ok = await isLoggedIn();
-      if (!ok) {
-        router.replace('/login');
+      // Kontrollera Supabase-session i första hand (mer robust än lokalt token)
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session) {
+        const ok = await isLoggedIn();
+        if (!ok) {
+          router.replace('/login');
+          return;
+        }
+      }
+      // Hämta inloggad användare från Supabase och uppdatera profilvisningen
+      const userRes = await supabase.auth.getUser();
+      const user = userRes.data.user;
+      if (user) {
+        let username: string | undefined;
+        let fullName: string | undefined;
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('username, full_name, first_name, last_name')
+            .eq('id', user.id)
+            .single();
+          username = (profile as any)?.username ?? undefined;
+          // Försök använda full_name, annars sätt ihop first/last om de finns
+          const pfFirst: string | undefined = (profile as any)?.first_name;
+          const pfLast: string | undefined = (profile as any)?.last_name;
+          fullName = (profile as any)?.full_name ?? ([pfFirst, pfLast].filter(Boolean).join(' ') || undefined);
+        } catch {
+          // Ignorera fel vid läsning av profil
+        }
+        const meta = user.user_metadata ?? {};
+        const metaFirst = typeof meta.first_name === 'string' ? meta.first_name : '';
+        const metaLast = typeof meta.last_name === 'string' ? meta.last_name : '';
+        const fallbackName = [metaFirst, metaLast].filter(Boolean).join(' ');
+        const emailPrefix = (user.email ?? '').split('@')[0] ?? 'user';
+        const nextMe: User = {
+          id: user.id,
+          name: fullName || fallbackName || username || emailPrefix,
+          username: username || (typeof meta.username === 'string' ? meta.username : emailPrefix),
+          email: user.email ?? '',
+          avatarUrl: undefined,
+          createdAt: user.created_at ?? new Date().toISOString(),
+          friendsCount: me.friendsCount,
+        };
+        setMe(nextMe);
       }
     })();
   }, []);

@@ -3,6 +3,9 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'reac
 import { Stack, useRouter } from 'expo-router';
 import { getCurrentUser, getFriends, isValidUsername, updateCurrentUser } from '@/lib/users-store';
 import { clearToken } from '@/lib/session';
+import { supabase } from '@/src/lib/supabase';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -10,6 +13,8 @@ export default function SettingsScreen() {
   const [name, setName] = useState(me.name);
   const [username, setUsername] = useState(me.username);
   const [saving, setSaving] = useState(false);
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
 
   const onSave = () => {
     const trimmedName = name.trim();
@@ -56,10 +61,11 @@ export default function SettingsScreen() {
       <TouchableOpacity
         accessibilityLabel="Logga ut"
         onPress={async () => {
+          await supabase.auth.signOut();
           await clearToken();
           router.replace('/login');
         }}
-        style={styles.logoutBtn}
+        style={[styles.logoutBtn, { marginBottom: 8 + insets.bottom + tabBarHeight }]}
       >
         <Text style={styles.logoutText}>Logga ut</Text>
       </TouchableOpacity>

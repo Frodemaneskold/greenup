@@ -1,102 +1,82 @@
-Justus Backend (Next.js + SQLite)
-=================================
+# GreenUp Backend (Express + TypeScript)
 
-Placering: `greenup/backend`
+A minimal API server for GreenUp, built with Express and Supabase. It does not replace Supabase Auth — it complements it with custom endpoints when needed.
 
-Snabbstart
-----------
+## Features
 
-1) Installera:
+- Health check: `GET /health`
+- Authenticated user info: `GET /me` (verifies Supabase access token)
+- Fetch your `profiles` row: `GET /profiles/me`
+- Update your `profiles` row: `POST /profiles/update`
 
-```bash
-cd greenup/backend
+## Requirements
+
+- Node.js 18+
+- Supabase project URL and anon key
+- (Optional) Supabase Service Role Key if you plan to do admin/server-only operations
+
+## Setup
+
+1. Create an `.env` file in this folder with:
+
+```
+PORT=8787
+SUPABASE_URL=your_supabase_url
+SUPABASE_ANON_KEY=your_supabase_anon_key
+# SUPABASE_SERVICE_ROLE_KEY=your_service_role_key   # optional
+```
+
+2. Install dependencies:
+
+```
 npm install
 ```
 
-2) Miljövariabel:
-
-Skapa en `.env` i `greenup/backend` med:
+3. Start the server in dev mode:
 
 ```
-JWT_SECRET=byt-till-en-lang-hemlig-strang
-```
-
-3) Starta dev-server:
-
-```bash
 npm run dev
-# API: http://localhost:4000
 ```
 
-API
----
+The API will run on `http://localhost:8787` by default.
 
-- POST `/api/login`
-  - Body: `{ "username": "admin", "password": "admin123" }`
-  - Response: `{ "token": "..." }` (JWT) vid success, annars 401
+## Auth: how it works
 
-Databas
--------
+- The client (your Expo app) logs in using Supabase Auth and receives an access token.
+- Send that token to this backend as a Bearer token: `Authorization: Bearer <access_token>`.
+- The middleware calls `supabase.auth.getUser(token)` to verify and loads the user.
 
-- SQLite-fil skapas i `greenup/backend/data/app.db`
-- Tabeller:
-  - `users(id, username UNIQUE, password_hash, created_at)`
-- En standardanvändare seedas första gången:
-  - username: `admin`
-  - password: `admin123`
+## Example requests
 
-Notiser
--------
+```
+GET /health
 
-- Node runtime används (krävs för filsystem/SQLite).
-- Ändra seed-kontot omedelbart för produktion.
+GET /me
+Authorization: Bearer <token>
 
-Justus Backend (Next.js + SQLite)
-=================================
+GET /profiles/me
+Authorization: Bearer <token>
 
-Quickstart
----------
+POST /profiles/update
+Authorization: Bearer <token>
+Content-Type: application/json
 
-1) Install dependencies:
-
-```bash
-cd backend
-npm install
+{
+  "username": "frode",
+  "first_name": "Frode",
+  "last_name": "Maneskold"
+}
 ```
 
-2) Add env:
+Note: The `profiles` table should include an `id` UUID column that matches `auth.users.id`, and Row Level Security (RLS) policies must allow the authenticated user to select/update their own row.
 
-Copy `.env.example` to `.env` and set `JWT_SECRET`.
+## Production
 
-3) Run dev server:
-
-```bash
-npm run dev
-# API runs at http://localhost:4000
+```
+npm run build
+npm start
 ```
 
-API
----
-
-- POST `/api/login`
-  - Body: `{ "username": "admin", "password": "admin123" }`
-  - Response: `{ "token": "..." }` on success, 401 on failure
-
-Database
---------
-
-- SQLite file: `backend/data/app.db`
-- Tables:
-  - `users(id, username UNIQUE, password_hash, created_at)`
-- A default user is seeded on first run:
-  - username: `admin`
-  - password: `admin123`
-
-Notes
------
-
-- This backend uses Node runtime (not Edge) to allow filesystem access for SQLite.
-- Replace the seeded credentials immediately in production.
-
+Deploy wherever you prefer (Render, Fly.io, Railway, etc.). Set the same env variables in your hosting provider.
 
 

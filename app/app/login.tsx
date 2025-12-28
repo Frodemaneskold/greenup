@@ -1,21 +1,49 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Stack, router } from 'expo-router';
-import { login as loginApi } from '@/lib/api';
+import { supabase } from '@/src/lib/supabase';
 import { setToken } from '@/lib/session';
 import { updateCurrentUser } from '@/lib/users-store';
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('12345');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const onSubmit = async () => {
     try {
       setLoading(true);
-      const { token } = await loginApi(username.trim(), password);
-      await setToken(token);
-      updateCurrentUser({ username, name: username });
+      const trimmedEmail = email.trim();
+      if (!trimmedEmail) {
+        Alert.alert('E-post krävs');
+        return;
+      }
+      if (!password) {
+        Alert.alert('Lösenord krävs');
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+      if (error) {
+        Alert.alert('Fel', error.message);
+        return;
+      }
+      // Spara access token för appens "är inloggad"-logik
+      if (data.session?.access_token) {
+        await setToken(data.session.access_token);
+      }
+      // Uppdatera lokalt användarobjekt för att visa namn/användarnamn på profilsidan
+      const userRes = await supabase.auth.getUser();
+      const meta = userRes.data.user?.user_metadata ?? {};
+      const first = typeof meta.first_name === 'string' ? meta.first_name : '';
+      const last = typeof meta.last_name === 'string' ? meta.last_name : '';
+      const name = [first, last].filter(Boolean).join(' ') || trimmedEmail.split('@')[0];
+      const uname = typeof meta.username === 'string' ? meta.username : trimmedEmail.split('@')[0];
+      updateCurrentUser({ name, username: uname });
+      // Navigera direkt till profilsidan
       router.replace('/(tabs)/acount');
     } catch (e: any) {
       Alert.alert('Fel', e?.message ?? 'Något gick fel');
@@ -34,11 +62,11 @@ export default function LoginScreen() {
               accessibilityLabel="Tillbaka"
               onPress={() => {
                 // Gå tillbaka om möjligt, annars hemfliken
-                // @ts-expect-error canGoBack exists in expo-router at runtime
-                if (typeof router.canGoBack === 'function' && router.canGoBack()) {
+                 const canGoBack = (router as any)?.canGoBack;
+                 if (typeof canGoBack === 'function' && canGoBack()) {
                   router.back();
                 } else {
-                  router.replace('/(tabs)');
+                   router.replace('/(tabs)/acount');
                 }
               }}
               style={{ paddingHorizontal: 8, paddingVertical: 6 }}
@@ -49,12 +77,13 @@ export default function LoginScreen() {
         }}
       />
       <View style={styles.card}>
-        <Text style={styles.label}>Användarnamn</Text>
+        <Text style={styles.label}>E-post</Text>
         <TextInput
-          value={username}
-          onChangeText={setUsername}
-          placeholder="admin"
+          value={email}
+          onChangeText={setEmail}
+          placeholder="din@mail.se"
           autoCapitalize="none"
+          keyboardType="email-address"
           style={styles.input}
         />
         <Text style={styles.label}>Lösenord</Text>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Stack, router } from 'expo-router';
-import { register as registerApi } from '@/lib/api';
+import { supabase } from '@/src/lib/supabase';
 import { setToken } from '@/lib/session';
 import { updateCurrentUser } from '@/lib/users-store';
 
@@ -48,18 +48,53 @@ export default function RegisterScreen() {
         Alert.alert('Lösenord krävs');
         return;
       }
-      const { token } = await registerApi({
-        firstName: trimmedFirst,
-        lastName: trimmedLast,
-        username: trimmedUser,
+      // Skapa användare i Supabase Auth. `profiles`-posten skapas automatiskt via DB-trigger efter signup.
+      const { data, error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+        options: {
+          data: {
+            username: trimmedUser,
+            first_name: trimmedFirst,
+            last_name: trimmedLast,
+          },
+        },
+      });
+      if (error) {
+        Alert.alert('Fel', error.message);
+        return;
+      }
+      // Om e-postverifiering är avstängd kan session finnas direkt -> navigera till profil.
+      if (data.session) {
+        if (data.session.access_token) {
+          await setToken(data.session.access_token);
+        }
+        updateCurrentUser({
+          name: [trimmedFirst, trimmedLast].filter(Boolean).join(' ') || trimmedUser,
+          username: trimmedUser,
+        });
+        router.replace('/(tabs)/acount');
+        return;
+      }
+      // För projekt där verifiering är avstängd men ingen session returneras, försök logga in direkt.
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,
         password,
       });
-      await setToken(token);
-      const finalUsername = trimmedUser || (trimmedEmail.split('@')[0] || 'user');
-      const name = [trimmedFirst, trimmedLast].filter(Boolean).join(' ') || finalUsername;
-      updateCurrentUser({ username: finalUsername, name });
-      router.replace('/(tabs)/acount');
+      if (!signInError) {
+        if (signInData.session?.access_token) {
+          await setToken(signInData.session.access_token);
+        }
+        updateCurrentUser({
+          name: [trimmedFirst, trimmedLast].filter(Boolean).join(' ') || trimmedUser,
+          username: trimmedUser,
+        });
+        router.replace('/(tabs)/acount');
+        return;
+      }
+      // Om verifiering krävs får användaren mail – be dem logga in efter att ha verifierat.
+      Alert.alert('Verifiering skickad', 'Kolla din e-post för att bekräfta kontot. Logga in efter verifiering.');
+      router.replace('/login');
     } catch (e: any) {
       Alert.alert('Fel', e?.message ?? 'Något gick fel');
     } finally {
