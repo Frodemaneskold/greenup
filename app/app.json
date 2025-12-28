@@ -6,6 +6,10 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "greenup",
+    "extra": {
+      "supabaseUrl": "https://oldyeaylxdnvfrzocobu.supabase.co",
+      "supabaseAnonKey": "sb_publishable_YC7cKRCzkXMqhL8tOh1vxg_1--ZPWVZ"
+    },
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {

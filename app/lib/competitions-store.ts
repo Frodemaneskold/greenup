@@ -16,34 +16,7 @@ export type Competition = {
   updatedAt: string; // YYYY-MM-DD
 };
 
-let competitions: Competition[] = [
-  {
-    id: '1',
-    name: 'Kompisligan',
-    description: 'Vännernas utmaning',
-    startDate: undefined,
-    endDate: undefined,
-    participants: [
-      { id: 'me', name: 'Du', co2ReducedKg: 42.2 },
-      { id: '2', name: 'Anna Svensson', co2ReducedKg: 37.9 },
-      { id: '3', name: 'Leo Nilsson', co2ReducedKg: 15.3 },
-      { id: '4', name: 'Maja Karlsson', co2ReducedKg: 9.7 },
-    ],
-    updatedAt: '2025-11-10',
-  },
-  {
-    id: '2',
-    name: 'Jobbteamet',
-    description: 'Kontorets CO₂-race',
-    startDate: undefined,
-    endDate: undefined,
-    participants: [
-      { id: 'me', name: 'Du', co2ReducedKg: 12.5 },
-      { id: '2', name: 'Anna Svensson', co2ReducedKg: 5.4 },
-    ],
-    updatedAt: '2025-11-09',
-  },
-];
+let competitions: Competition[] = [];
 
 type Listener = (current: Competition[]) => void;
 const listeners = new Set<Listener>();
