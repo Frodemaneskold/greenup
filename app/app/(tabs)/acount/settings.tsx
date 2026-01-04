@@ -16,25 +16,41 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
 
-  const onSave = () => {
+  const onSave = async () => {
     const trimmedName = name.trim();
     const trimmedUser = username.trim();
+    const normalizedUser = trimmedUser.toLowerCase();
     if (!trimmedName) {
       Alert.alert('Namn krävs');
       return;
     }
-    if (!isValidUsername(trimmedUser)) {
+    if (!isValidUsername(normalizedUser)) {
       Alert.alert('Ogiltigt användarnamn', 'Minst 3 tecken, a-ö, siffror, _ eller .');
-      return;
-    }
-    const exists = getFriends().some((f) => f.username.toLowerCase() === trimmedUser.toLowerCase());
-    if (exists && trimmedUser.toLowerCase() !== me.username.toLowerCase()) {
-      Alert.alert('Upptaget användarnamn', 'Välj ett annat unikt användarnamn.');
       return;
     }
     setSaving(true);
     try {
-      updateCurrentUser({ name: trimmedName, username: trimmedUser });
+      // Kontrollera unikt användarnamn (case-insensitivt) globalt, exkludera mig själv
+      const { data: userRes } = await supabase.auth.getUser();
+      const myId = userRes.user?.id;
+      if (normalizedUser !== me.username.toLowerCase()) {
+        const { data: taken } = await supabase
+          .from('profiles')
+          .select('id')
+          .ilike('username', normalizedUser)
+          .limit(1);
+        const conflict = (taken ?? []).some((r) => r.id !== myId);
+        if (conflict) {
+          Alert.alert('Upptaget användarnamn', 'Välj ett annat unikt användarnamn.');
+          return;
+        }
+      }
+      // Uppdatera i Supabase-profil
+      if (myId) {
+        await supabase.from('profiles').update({ username: normalizedUser, full_name: trimmedName }).eq('id', myId);
+      }
+      // Uppdatera lokalt
+      updateCurrentUser({ name: trimmedName, username: normalizedUser });
       Alert.alert('Sparat');
       router.back();
     } finally {

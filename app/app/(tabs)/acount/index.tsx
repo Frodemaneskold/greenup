@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Link, Stack, router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getCompetitions } from '@/lib/competitions-store';
-import { getCurrentUser, getFriends, subscribeUsers, type User } from '@/lib/users-store';
+import { getCurrentUser, getFriends, subscribeUsers, setCurrentUser, type User } from '@/lib/users-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isLoggedIn } from '@/lib/session';
 import { supabase } from '@/src/lib/supabase';
@@ -45,12 +45,15 @@ function computeMyRank(myId: string): number {
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const [me, setMe] = useState(getCurrentUser());
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [friends, setFriends] = useState<FriendWithTotal[]>(computeFriendTotals());
+  const [friendCount, setFriendCount] = useState<number>(0);
   const myRank = useMemo(() => computeMyRank(me.id), [me, friends]);
 
   useEffect(() => {
     (async () => {
       // Kontrollera Supabase-session i första hand (mer robust än lokalt token)
+      setCheckingAuth(true);
       const { data: sess } = await supabase.auth.getSession();
       if (!sess.session) {
         const ok = await isLoggedIn();
@@ -63,6 +66,23 @@ export default function AccountScreen() {
       const userRes = await supabase.auth.getUser();
       const user = userRes.data.user;
       if (user) {
+        // Ladda antal vänner från Supabase (accepted relationer)
+        try {
+          const myId = user.id;
+          const { data: rels } = await supabase
+            .from('friend_requests')
+            .select('from_user_id, to_user_id')
+            .eq('status', 'accepted')
+            .or(`from_user_id.eq.${myId},to_user_id.eq.${myId}`);
+          const otherIds = Array.from(
+            new Set(
+              (rels ?? []).map((r: any) => (r.from_user_id === myId ? r.to_user_id : r.from_user_id))
+            )
+          );
+          setFriendCount(otherIds.length);
+        } catch {
+          // ignore
+        }
         let username: string | undefined;
         let fullName: string | undefined;
         try {
@@ -94,7 +114,9 @@ export default function AccountScreen() {
           friendsCount: me.friendsCount,
         };
         setMe(nextMe);
+        setCurrentUser(nextMe);
       }
+      setCheckingAuth(false);
     })();
   }, []);
 
@@ -103,12 +125,54 @@ export default function AccountScreen() {
       setMe(getCurrentUser());
       setFriends(computeFriendTotals());
     });
+    // Realtime för ändrade relationer påverkar vännantal
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    (async () => {
+      try {
+        const { data: me } = await supabase.auth.getUser();
+        const myId = me?.user?.id;
+        if (!myId) return;
+        async function reloadCount() {
+          const { data: rels } = await supabase
+            .from('friend_requests')
+            .select('from_user_id, to_user_id')
+            .eq('status', 'accepted')
+            .or(`from_user_id.eq.${myId},to_user_id.eq.${myId}`);
+          const otherIds = Array.from(
+            new Set(
+              (rels ?? []).map((r: any) => (r.from_user_id === myId ? r.to_user_id : r.from_user_id))
+            )
+          );
+          setFriendCount(otherIds.length);
+        }
+        channel = supabase
+          .channel('realtime:friend_count:' + myId)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'friend_requests', filter: `to_user_id=eq.${myId}` },
+            reloadCount
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'friend_requests', filter: `from_user_id=eq.${myId}` },
+            reloadCount
+          )
+          .subscribe();
+      } catch {
+        // ignore
+      }
+    })();
     return () => {
       unsub();
+      if (channel) supabase.removeChannel(channel);
     };
   }, []);
 
   const top3 = useMemo(() => friends.slice(0, 3), [friends]);
+
+  if (checkingAuth) {
+    return null;
+  }
 
   return (
     <View style={[styles.container, { paddingTop: 16 + insets.top }]}>
@@ -136,7 +200,7 @@ export default function AccountScreen() {
       <View style={styles.statsRow}>
         <Link href="/(tabs)/acount/friends" asChild>
           <TouchableOpacity style={styles.statBox} accessibilityLabel="Visa vänner">
-            <Text style={styles.statNumber}>{getFriends().length}</Text>
+            <Text style={styles.statNumber}>{friendCount}</Text>
             <Text style={styles.statLabel}>Vänner</Text>
           </TouchableOpacity>
         </Link>

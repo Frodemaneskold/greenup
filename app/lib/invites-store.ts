@@ -1,5 +1,6 @@
 import { isValidEmail, isValidUsername, type InviteTarget } from './users-store';
-import { addParticipant } from './competitions-store';
+import { addParticipant, loadCompetitionsFromSupabase } from './competitions-store';
+import { supabase } from '@/src/lib/supabase';
 
 export type Invite = {
   id: string;
@@ -25,6 +26,12 @@ export function subscribeInvites(listener: Listener) {
 
 export function getPendingInvitesForCompetition(competitionId: string): Invite[] {
   return invites.filter((i) => i.competitionId === competitionId && i.status === 'pending');
+}
+
+export function getPendingInvitesForUser(userId: string): Invite[] {
+  return invites.filter(
+    (i) => i.status === 'pending' && i.target.type === 'friend' && i.target.userId === userId
+  );
 }
 
 export function addPendingInvites(competitionId: string, targets: InviteTarget[]) {
@@ -58,11 +65,67 @@ export function acceptInvite(inviteId: string) {
   }
   name = name.charAt(0).toUpperCase() + name.slice(1);
 
-  addParticipant(inv.competitionId, {
-    id: `u-${Math.random().toString(36).slice(2, 7)}`,
-    name,
-    co2ReducedKg: 0,
-  });
+  // Try to add the INVITED user as participant in Supabase.
+  // If the current session user IS the invitee, insert-self policy applies.
+  // If the current session user IS the owner, owner-adds policy applies.
+  (async () => {
+    try {
+      const { data: me } = await supabase.auth.getUser();
+      const myId = me?.user?.id ?? null;
+
+      // Resolve the intended target user's id
+      let targetUserId: string | null = null;
+      if (inv.target.type === 'friend') {
+        targetUserId = inv.target.userId;
+      } else if (inv.target.type === 'email') {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, full_name, username')
+          .eq('email', inv.target.email)
+          .single();
+        targetUserId = (data as any)?.id ?? null;
+        if (data) {
+          const full = (data as any).full_name as string | null;
+          const uname = (data as any).username as string | null;
+          name = full || uname || name;
+        }
+      } else if (inv.target.type === 'username') {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, full_name, username')
+          .eq('username', inv.target.username)
+          .single();
+        targetUserId = (data as any)?.id ?? null;
+        if (data) {
+          const full = (data as any).full_name as string | null;
+          const uname = (data as any).username as string | null;
+          name = full || uname || name;
+        }
+      }
+
+      // Who should be inserted?
+      // - If the signed-in user equals the target, insert self.
+      // - Otherwise try owner-adds (current user must be the competition owner).
+      const userIdToInsert = myId && targetUserId === myId ? myId : targetUserId;
+      if (userIdToInsert) {
+        await supabase.from('competition_participants').insert({
+          competition_id: inv.competitionId,
+          user_id: userIdToInsert,
+        });
+        addParticipant(inv.competitionId, {
+          id: userIdToInsert,
+          name,
+          co2ReducedKg: 0,
+        });
+        // Ensure the competitions list is refreshed for this device right away
+        await loadCompetitionsFromSupabase();
+      }
+    } catch {
+      // ignore errors; UI will still show local accept
+    } finally {
+      notify();
+    }
+  })();
 
   notify();
 }

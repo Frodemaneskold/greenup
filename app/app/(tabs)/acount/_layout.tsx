@@ -1,7 +1,21 @@
-import { Stack } from 'expo-router';
-import React from 'react';
+import { Stack, router } from 'expo-router';
+import React, { useEffect } from 'react';
+import { supabase } from '@/src/lib/supabase';
+import { isLoggedIn } from '@/lib/session';
 
 export default function AccountStackLayout() {
+  useEffect(() => {
+    (async () => {
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session) {
+        const ok = await isLoggedIn();
+        if (!ok) {
+          router.replace('/login');
+        }
+      }
+    })();
+  }, []);
+
   return (
     <Stack
       screenOptions={{

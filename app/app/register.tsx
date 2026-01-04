@@ -19,7 +19,9 @@ export default function RegisterScreen() {
       const trimmedFirst = firstName.trim();
       const trimmedLast = lastName.trim();
       const trimmedUser = username.trim();
+      const normalizedUser = trimmedUser.toLowerCase();
       const trimmedEmail = email.trim();
+      const normalizedEmail = trimmedEmail.toLowerCase();
       if (!trimmedFirst) {
         Alert.alert('Förnamn krävs');
         return;
@@ -32,7 +34,7 @@ export default function RegisterScreen() {
         Alert.alert('Användarnamn krävs');
         return;
       }
-      if (!/^[a-zA-Z0-9_.]{3,}$/.test(trimmedUser)) {
+      if (!/^[a-z0-9_.]{3,}$/.test(normalizedUser)) {
         Alert.alert('Ogiltigt användarnamn', 'Minst 3 tecken. Tillåtna: a-ö, siffror, _ och .');
         return;
       }
@@ -40,7 +42,7 @@ export default function RegisterScreen() {
         Alert.alert('E-post krävs');
         return;
       }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
         Alert.alert('Ogiltig e-postadress');
         return;
       }
@@ -48,20 +50,55 @@ export default function RegisterScreen() {
         Alert.alert('Lösenord krävs');
         return;
       }
+      // Kontrollera unikt användarnamn (case-insensitivt) mot Supabase
+      try {
+        const { data: taken } = await supabase
+          .from('profiles')
+          .select('id')
+          .ilike('username', normalizedUser)
+          .limit(1);
+        if (taken && taken.length > 0) {
+          Alert.alert('Upptaget användarnamn', 'Välj ett annat unikt användarnamn.');
+          return;
+        }
+      } catch {
+        // Vid nätverksfel, var försiktig: avbryt istället för att skapa dubletter
+        Alert.alert('Kunde inte verifiera användarnamnet', 'Försök igen om en stund.');
+        return;
+      }
+      // Förkontroll: unik e-post i profiles om kolumnen finns (ignorera om den saknas)
+      try {
+        const { data: emailRows } = await supabase
+          .from('profiles')
+          .select('id')
+          .ilike('email', normalizedEmail)
+          .limit(1);
+        if (emailRows && emailRows.length > 0) {
+          Alert.alert('E‑post upptagen', 'E‑postadressen används redan. Välj en annan.');
+          return;
+        }
+      } catch {
+        // Ignorera – lita på Auths unikhet för e‑post om kolumnen saknas
+      }
       // Skapa användare i Supabase Auth. `profiles`-posten skapas automatiskt via DB-trigger efter signup.
       const { data, error } = await supabase.auth.signUp({
-        email: trimmedEmail,
+        email: normalizedEmail,
         password,
         options: {
           data: {
-            username: trimmedUser,
+            username: normalizedUser,
             first_name: trimmedFirst,
             last_name: trimmedLast,
           },
         },
       });
       if (error) {
-        Alert.alert('Fel', error.message);
+        const msg = (error as any)?.message?.toString?.() ?? '';
+        if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('exists')) {
+          Alert.alert('E‑post upptagen', 'E‑postadressen används redan. Välj en annan.');
+        } else {
+          Alert.alert('Fel', msg || 'Kunde inte skapa konto.');
+        }
         return;
       }
       // Om e-postverifiering är avstängd kan session finnas direkt -> navigera till profil.
@@ -69,25 +106,69 @@ export default function RegisterScreen() {
         if (data.session.access_token) {
           await setToken(data.session.access_token);
         }
+        // Försök skapa/uppdatera profil med användarnamn och e‑post direkt
+        try {
+          const { data: userRes } = await supabase.auth.getUser();
+          const authUser = userRes.user;
+          if (authUser?.id) {
+            await supabase
+              .from('profiles')
+              .upsert(
+                {
+                  id: authUser.id,
+                  username: normalizedUser,
+                  first_name: trimmedFirst,
+                  last_name: trimmedLast,
+                  full_name: [trimmedFirst, trimmedLast].filter(Boolean).join(' ') || undefined,
+                  email: normalizedEmail,
+                },
+                { onConflict: 'id' }
+              );
+          }
+        } catch {
+          // ignoreras; profilen kan fyllas vid nästa inloggning
+        }
         updateCurrentUser({
-          name: [trimmedFirst, trimmedLast].filter(Boolean).join(' ') || trimmedUser,
-          username: trimmedUser,
+          name: [trimmedFirst, trimmedLast].filter(Boolean).join(' ') || normalizedUser,
+          username: normalizedUser,
         });
         router.replace('/(tabs)/acount');
         return;
       }
       // För projekt där verifiering är avstängd men ingen session returneras, försök logga in direkt.
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
+        email: normalizedEmail,
         password,
       });
       if (!signInError) {
         if (signInData.session?.access_token) {
           await setToken(signInData.session.access_token);
         }
+        // Upsert profil efter lyckad inloggning
+        try {
+          const { data: userRes } = await supabase.auth.getUser();
+          const authUser = userRes.user;
+          if (authUser?.id) {
+            await supabase
+              .from('profiles')
+              .upsert(
+                {
+                  id: authUser.id,
+                  username: normalizedUser,
+                  first_name: trimmedFirst,
+                  last_name: trimmedLast,
+                  full_name: [trimmedFirst, trimmedLast].filter(Boolean).join(' ') || undefined,
+                  email: normalizedEmail,
+                },
+                { onConflict: 'id' }
+              );
+          }
+        } catch {
+          // ignoreras
+        }
         updateCurrentUser({
-          name: [trimmedFirst, trimmedLast].filter(Boolean).join(' ') || trimmedUser,
-          username: trimmedUser,
+          name: [trimmedFirst, trimmedLast].filter(Boolean).join(' ') || normalizedUser,
+          username: normalizedUser,
         });
         router.replace('/(tabs)/acount');
         return;

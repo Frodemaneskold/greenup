@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { Stack, Link } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { getCompetitions, subscribe } from '@/lib/competitions-store';
+import { getCompetitions, subscribe, loadCompetitionsFromSupabase } from '@/lib/competitions-store';
 import type { Competition } from '@/lib/competitions-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -16,19 +16,25 @@ export default function LeaderboardListScreen() {
 
   useEffect(() => {
     const unsub = subscribe(setCompetitions);
+    // initial load from Supabase
+    void loadCompetitionsFromSupabase();
     return unsub;
   }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => {
-      // Pull from store on refresh
+    (async () => {
+      await loadCompetitionsFromSupabase();
       setCompetitions(getCompetitions());
       setRefreshing(false);
-    }, 800);
+    })();
   }, []);
 
   const renderItem = ({ item }: { item: Competition }) => {
+    const participantNames =
+      item.participants && item.participants.length
+        ? item.participants.map((p) => p.name || '').filter(Boolean).join(', ')
+        : 'Inga deltagare ännu';
     return (
       <View style={styles.row}>
         <Link
@@ -42,6 +48,7 @@ export default function LeaderboardListScreen() {
             <View style={styles.rowMain}>
               <Text style={styles.title}>{item.name}</Text>
               {item.description ? <Text style={styles.subtitle}>{item.description}</Text> : null}
+              <Text style={styles.participantsText}>{participantNames}</Text>
             </View>
             <View style={styles.rowMeta}>
               <Text style={styles.meta}>{item.participants.length} deltagare</Text>
@@ -131,6 +138,11 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 2,
     color: '#3a3a3a',
+  },
+  participantsText: {
+    marginTop: 6,
+    color: '#1f1f1f',
+    fontSize: 12,
   },
   rowMeta: {
     flexDirection: 'row',

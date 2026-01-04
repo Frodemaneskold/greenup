@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'reac
 import { Stack, useRouter } from 'expo-router';
 import { createCompetition } from '@/lib/competitions-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '@/src/lib/supabase';
 
 export default function CreateCompetitionScreen() {
   const router = useRouter();
@@ -12,24 +13,35 @@ export default function CreateCompetitionScreen() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  const onCreate = () => {
+  const onCreate = async () => {
     if (!name.trim()) {
       Alert.alert('Namn krävs', 'Ange ett namn för tävlingen.');
       return;
     }
-    const id = Date.now().toString();
-    const comp = createCompetition({
-      id,
-      name: name.trim(),
-      description: description.trim() || undefined,
-      startDate: startDate.trim() || undefined,
-      endDate: endDate.trim() || undefined,
-    });
-    Alert.alert('Tävling skapad', 'Inbjudningslänk har kopierats.');
-    router.replace({
-      pathname: '/(tabs)/leaderboard/competition/[id]',
-      params: { id: comp.id, name: comp.name },
-    });
+    try {
+      // Precheck: must be logged in (auth.uid present)
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user?.id) {
+        Alert.alert('Inte inloggad', 'Logga in för att skapa en tävling.');
+        return;
+      }
+      const comp = await createCompetition({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        startDate: startDate.trim() || undefined,
+        endDate: endDate.trim() || undefined,
+      });
+      Alert.alert('Tävling skapad', 'Inbjudningslänk har kopierats.');
+      router.replace({
+        pathname: '/(tabs)/leaderboard/competition/[id]',
+        params: { id: comp.id, name: comp.name },
+      });
+    } catch (e: any) {
+      Alert.alert(
+        'Kunde inte skapa tävling',
+        e?.message || 'Kontrollera att du är inloggad och försök igen.'
+      );
+    }
   };
 
   return (

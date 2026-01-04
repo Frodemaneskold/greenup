@@ -4,11 +4,13 @@ import { Link } from 'expo-router';
 import HomeBg from '@/assets/images/home-bg.svg';
 import { getCompetitions } from '@/lib/competitions-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getMe } from '@/lib/api';
+import { supabase } from '@/src/lib/supabase';
+import { fetchMyTotalCo2Saved, fetchAllUsersTotalCo2Saved, subscribeCo2TotalUpdated } from '@/src/services/missions';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [co2Saved, setCo2Saved] = useState<number | null>(null);
+  const [allSaved, setAllSaved] = useState<number | null>(null);
   const { myTotal, allTotal } = useMemo(() => {
     const comps = getCompetitions();
     let my = 0;
@@ -27,14 +29,61 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
+    let unsub: (() => void) | null = null;
+    let unsubLocal: (() => void) | null = null;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let channelAll: ReturnType<typeof supabase.channel> | null = null;
     (async () => {
       try {
-        const me = await getMe();
-        setCo2Saved(me.total_co2_saved ?? 0);
+        // Initial load from Supabase aggregated total
+        const total = await fetchMyTotalCo2Saved();
+        setCo2Saved(total);
+        const all = await fetchAllUsersTotalCo2Saved();
+        setAllSaved(all);
       } catch {
-        // not logged in; keep null to fall back to local calc
+        // ignore; will fall back to local calc
       }
+      // Local pub/sub as a fallback to update immediately after logging an action
+      unsubLocal = subscribeCo2TotalUpdated(async () => {
+        const latest = await fetchMyTotalCo2Saved();
+        setCo2Saved(latest);
+        const all = await fetchAllUsersTotalCo2Saved();
+        setAllSaved(all);
+      });
+      // Subscribe to realtime inserts to update total immediately after missions are logged
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId) return;
+      channel = supabase
+        .channel('realtime:my_user_actions_total')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'user_actions', filter: `user_id=eq.${userId}` },
+          async () => {
+            const latest = await fetchMyTotalCo2Saved();
+            setCo2Saved(latest);
+          }
+        )
+        .subscribe();
+      // Optional: listen to all inserts to update global total
+      channelAll = supabase
+        .channel('realtime:all_user_actions_total')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'user_actions' }, async () => {
+          const all = await fetchAllUsersTotalCo2Saved();
+          setAllSaved(all);
+        })
+        .subscribe();
+      unsub = () => {
+        if (channel) supabase.removeChannel(channel);
+        if (channelAll) supabase.removeChannel(channelAll);
+      };
     })();
+    return () => {
+      if (unsub) unsub();
+      if (unsubLocal) unsubLocal();
+      if (channel) supabase.removeChannel(channel);
+      if (channelAll) supabase.removeChannel(channelAll);
+    };
   }, []);
 
   return (
@@ -49,7 +98,7 @@ export default function HomeScreen() {
           </View>
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Allas minskning</Text>
-            <Text style={styles.cardValue}>{allTotal.toFixed(1)} kg CO₂e</Text>
+            <Text style={styles.cardValue}>{((allSaved ?? allTotal)).toFixed(1)} kg CO₂e</Text>
           </View>
         </View>
 

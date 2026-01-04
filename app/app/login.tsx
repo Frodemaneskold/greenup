@@ -1,14 +1,26 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, BackHandler } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { supabase } from '@/src/lib/supabase';
 import { setToken } from '@/lib/session';
 import { updateCurrentUser } from '@/lib/users-store';
+import { useFocusEffect } from '@react-navigation/native';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Om användaren trycker Androids back-knapp på login -> gå till Hem
+  useFocusEffect(
+    React.useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        router.replace('/');
+        return true;
+      });
+      return () => sub.remove();
+    }, [])
+  );
 
   const onSubmit = async () => {
     try {
@@ -38,6 +50,49 @@ export default function LoginScreen() {
       // Uppdatera lokalt användarobjekt för att visa namn/användarnamn på profilsidan
       const userRes = await supabase.auth.getUser();
       const meta = userRes.data.user?.user_metadata ?? {};
+      const authUser = userRes.data.user;
+      // Autofix: säkerställ att profiles har ett username (unikt, lowercase)
+      try {
+        if (authUser?.id) {
+          const meId = authUser.id;
+          const emailLower = (authUser.email ?? '').toLowerCase();
+          const baseMeta = typeof meta.username === 'string' ? meta.username.trim().toLowerCase() : '';
+          let candidate = baseMeta || (emailLower ? emailLower.split('@')[0] : '');
+          if (!candidate) candidate = 'user';
+          // Läs befintlig profil
+          let hasUsername = false;
+          try {
+            const { data: prof } = await supabase.from('profiles').select('username').eq('id', meId).single();
+            hasUsername = !!(prof && (prof as any).username);
+          } catch {
+            // om single() felar, fortsätt och försök skriva
+          }
+          if (!hasUsername) {
+            // Kolla snabb konflikt (case-insensitivt)
+            const { data: taken } = await supabase
+              .from('profiles')
+              .select('id')
+              .ilike('username', candidate)
+              .limit(1);
+            let usernameToUse = candidate;
+            if ((taken ?? []).some((r) => r.id !== meId)) {
+              usernameToUse = `${candidate}_${Math.random().toString(36).slice(2, 6)}`;
+            }
+            await supabase
+              .from('profiles')
+              .upsert(
+                {
+                  id: meId,
+                  email: emailLower || null,
+                  username: usernameToUse,
+                },
+                { onConflict: 'id' }
+              );
+          }
+        }
+      } catch {
+        // ignorera tyst; DB-constraint/trigger kan också hantera
+      }
       const first = typeof meta.first_name === 'string' ? meta.first_name : '';
       const last = typeof meta.last_name === 'string' ? meta.last_name : '';
       const name = [first, last].filter(Boolean).join(' ') || trimmedEmail.split('@')[0];
@@ -61,17 +116,11 @@ export default function LoginScreen() {
             <TouchableOpacity
               accessibilityLabel="Tillbaka"
               onPress={() => {
-                // Gå tillbaka om möjligt, annars hemfliken
-                 const canGoBack = (router as any)?.canGoBack;
-                 if (typeof canGoBack === 'function' && canGoBack()) {
-                  router.back();
-                } else {
-                   router.replace('/(tabs)/acount');
-                }
+                router.replace('/');
               }}
               style={{ paddingHorizontal: 8, paddingVertical: 6 }}
             >
-              <Text style={{ fontSize: 16 }}>‹ Tillbaka</Text>
+              <Text style={{ fontSize: 16 }}>‹ Hem</Text>
             </TouchableOpacity>
           ),
         }}

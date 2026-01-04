@@ -1,4 +1,6 @@
-import { currentUser } from './users-store';
+import { getCurrentUser } from './users-store';
+import { fetchMyTotalCo2Saved, fetchMyCo2SavedSince, subscribeCo2TotalUpdated } from '@/src/services/missions';
+import { supabase } from '@/src/lib/supabase';
 
 export type Participant = {
   id: string;
@@ -21,6 +23,8 @@ let competitions: Competition[] = [];
 type Listener = (current: Competition[]) => void;
 const listeners = new Set<Listener>();
 
+let co2SyncStarted = false;
+
 function notify() {
   const snapshot = [...competitions];
   listeners.forEach((l) => l(snapshot));
@@ -34,29 +38,59 @@ export function getCompetitionById(id: string): Competition | undefined {
   return competitions.find((c) => c.id === id);
 }
 
-export function createCompetition(input: {
-  id: string;
+export async function createCompetition(input: {
   name: string;
   description?: string;
   startDate?: string;
   endDate?: string;
 }) {
+  // Ensure we use Supabase auth user id for RLS
+  const { data: meData } = await supabase.auth.getUser();
+  const meAuth = meData?.user;
+  if (!meAuth?.id) {
+    throw new Error('Du måste vara inloggad för att skapa en tävling.');
+  }
+  const me = getCurrentUser();
+  const creatorId = meAuth.id;
   const today = new Date();
   const yyyy = today.getFullYear();
   const mm = String(today.getMonth() + 1).padStart(2, '0');
   const dd = String(today.getDate()).padStart(2, '0');
   const updatedAt = `${yyyy}-${mm}-${dd}`;
+  // Create in Supabase; if it fails, propagate error (no offline fallback)
+  const { data, error } = await supabase
+    .from('competitions')
+    .insert({
+      name: input.name,
+      description: input.description ?? null,
+      start_date: input.startDate ?? null,
+      end_date: input.endDate ?? null,
+      created_by: creatorId,
+    })
+    .select('id, name, description, start_date, end_date')
+    .single();
+  if (error) {
+    throw new Error(error.message);
+  }
+  const newId = (data as any).id as string;
+  // Add creator as participant (insert-self policy)
+  await supabase.from('competition_participants').insert({
+    competition_id: newId,
+    user_id: creatorId,
+  });
   const newComp: Competition = {
-    id: input.id,
+    id: newId,
     name: input.name,
     description: input.description,
     startDate: input.startDate,
     endDate: input.endDate,
-    participants: [{ id: currentUser.id, name: currentUser.name, co2ReducedKg: 0 }],
+    participants: [{ id: me.id, name: me.name || 'Du', co2ReducedKg: 0 }],
     updatedAt,
   };
-  competitions = [newComp, ...competitions];
-  notify();
+  // Refresh from server to ensure consistency
+  await loadCompetitionsFromSupabase();
+  startCo2Sync();
+  void refreshMyCo2ForCompetition(newComp.id);
   return newComp;
 }
 
@@ -80,6 +114,152 @@ export function subscribe(listener: Listener) {
   return () => {
     listeners.delete(listener);
   };
+}
+
+// --- CO2 syncing for current user ---
+async function computeMyCo2ForCompetition(comp: Competition): Promise<number> {
+  if (comp.startDate && /^\d{4}-\d{2}-\d{2}$/.test(comp.startDate)) {
+    return fetchMyCo2SavedSince(comp.startDate);
+  }
+  return fetchMyTotalCo2Saved();
+}
+
+function setMyCo2InCompetition(competitionId: string, co2ReducedKg: number) {
+  const me = getCurrentUser();
+  const comp = competitions.find((c) => c.id === competitionId);
+  if (!comp) return;
+  const idx = comp.participants.findIndex((p) => p.id === me.id);
+  if (idx === -1) return;
+  comp.participants = comp.participants.map((p) =>
+    p.id === me.id ? { ...p, co2ReducedKg } : p
+  );
+  notify();
+}
+
+export async function refreshMyCo2ForCompetition(competitionId: string): Promise<void> {
+  const comp = competitions.find((c) => c.id === competitionId);
+  if (!comp) return;
+  try {
+    const value = await computeMyCo2ForCompetition(comp);
+    setMyCo2InCompetition(competitionId, value);
+  } catch {
+    // Swallow errors to avoid breaking UI; value remains as-is
+  }
+}
+
+function startCo2Sync() {
+  if (co2SyncStarted) return;
+  co2SyncStarted = true;
+  // When local CO2 total updates (after logging an action), recompute across all competitions
+  subscribeCo2TotalUpdated(() => {
+    const ids = competitions.map((c) => c.id);
+    ids.forEach((id) => {
+      void refreshMyCo2ForCompetition(id);
+    });
+  });
+  // Also run an initial population pass for any preloaded competitions
+  competitions.forEach((c) => {
+    void refreshMyCo2ForCompetition(c.id);
+  });
+}
+
+// --- Load competitions from Supabase ---
+export async function loadCompetitionsFromSupabase(): Promise<void> {
+  try {
+    const me = getCurrentUser();
+    const { data: comps, error } = await supabase
+      .from('competitions')
+      .select('id, name, description, start_date, end_date, updated_at')
+      .order('updated_at', { ascending: false });
+    if (error) throw error;
+    const compIds = (comps ?? []).map((c: any) => c.id as string);
+    let participantsByComp: Record<string, string[]> = {};
+    let allUserIds = new Set<string>();
+    if (compIds.length) {
+      const { data: parts } = await supabase
+        .from('competition_participants')
+        .select('competition_id, user_id')
+        .in('competition_id', compIds);
+      participantsByComp = {};
+      (parts ?? []).forEach((row: any) => {
+        const cid = row.competition_id as string;
+        const uid = row.user_id as string;
+        (participantsByComp[cid] ||= []).push(uid);
+        allUserIds.add(uid);
+      });
+    }
+    // Resolve names from profiles
+    const idToName: Record<string, { name: string; username: string }> = {};
+    if (allUserIds.size > 0) {
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, full_name, first_name, last_name, username, email')
+        .in('id', Array.from(allUserIds));
+      (profs ?? []).forEach((row: any) => {
+        const full =
+          row.full_name ||
+          [row.first_name, row.last_name].filter(Boolean).join(' ') ||
+          row.username ||
+          (row.email ?? 'user').split('@')[0];
+        const uname = row.username || (row.email ?? 'user').split('@')[0];
+        idToName[row.id as string] = { name: String(full), username: String(uname) };
+      });
+    }
+    const mapped: Competition[] = (comps ?? []).map((row: any) => {
+      const d = new Date(row.updated_at as string);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const ids = participantsByComp[row.id as string] ?? [me.id];
+      const participants: Participant[] = ids.map((uid: string) => ({
+        id: uid,
+        name:
+          uid === me.id
+            ? (me.name || 'Du')
+            : (idToName[uid]?.name ?? uid.slice(0, 6)),
+        co2ReducedKg: 0,
+      }));
+      return {
+        id: row.id as string,
+        name: row.name as string,
+        description: (row.description as string | null) ?? undefined,
+        startDate: (row.start_date as string | null) ?? undefined,
+        endDate: (row.end_date as string | null) ?? undefined,
+        participants,
+        updatedAt: `${yyyy}-${mm}-${dd}`,
+      };
+    });
+    competitions = mapped;
+    notify();
+    startCo2Sync();
+    // Populate current user's CO2 values
+    for (const c of mapped) {
+      void refreshMyCo2ForCompetition(c.id);
+    }
+    startCompetitionsRealtime();
+  } catch {
+    // ignore
+  }
+}
+
+let listRealtimeStarted = false;
+function startCompetitionsRealtime() {
+  if (listRealtimeStarted) return;
+  listRealtimeStarted = true;
+  try {
+    const channel = supabase
+      .channel('realtime:competitions:list')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'competitions' }, () => {
+        void loadCompetitionsFromSupabase();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'competition_participants' }, () => {
+        void loadCompetitionsFromSupabase();
+      })
+      .subscribe();
+    // no need to hold reference; supabase client manages channels globally
+  } catch {
+    // ignore
+  }
 }
 
 

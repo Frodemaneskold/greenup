@@ -69,6 +69,104 @@ export async function logUserAction(mission: Mission): Promise<void> {
   if (error) {
     throw new Error(error.message);
   }
+  // Notify local listeners so UI can update immediately even without realtime
+  notifyCo2TotalUpdated();
+}
+
+// Fetch the caller's total saved CO2 from Supabase by summing user_actions
+export async function fetchMyTotalCo2Saved(): Promise<number> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
+    return 0;
+  }
+  const userId = userData.user.id;
+  const { data, error } = await supabase
+    .from('user_actions')
+    .select('co2_saved_kg')
+    .eq('user_id', userId);
+  if (error) {
+    return 0;
+  }
+  return (data as { co2_saved_kg: number }[] | null)?.reduce((sum, r) => sum + (Number(r.co2_saved_kg) || 0), 0) ?? 0;
+}
+
+// Fetch the total saved CO2 for ALL users by summing user_actions
+export async function fetchAllUsersTotalCo2Saved(): Promise<number> {
+  const { data, error } = await supabase
+    .from('user_actions')
+    .select('co2_saved_kg');
+  if (error) {
+    return 0;
+  }
+  return (data as { co2_saved_kg: number }[] | null)?.reduce((sum, r) => sum + (Number(r.co2_saved_kg) || 0), 0) ?? 0;
+}
+
+// Generic helpers for any user
+export async function fetchUserTotalCo2Saved(userId: string): Promise<number> {
+  if (!userId) return 0;
+  const { data, error } = await supabase
+    .from('user_actions')
+    .select('co2_saved_kg')
+    .eq('user_id', userId);
+  if (error) {
+    return 0;
+  }
+  return (data as { co2_saved_kg: number }[] | null)?.reduce((sum, r) => sum + (Number(r.co2_saved_kg) || 0), 0) ?? 0;
+}
+
+export async function fetchUserCo2SavedSince(userId: string, dateYmd: string): Promise<number> {
+  if (!userId) return 0;
+  const safe = /^\d{4}-\d{2}-\d{2}$/.test(dateYmd) ? dateYmd : undefined;
+  if (!safe) {
+    return fetchUserTotalCo2Saved(userId);
+  }
+  const since = new Date(`${safe}T00:00:00`);
+  const sinceIso = since.toISOString();
+  const { data, error } = await supabase
+    .from('user_actions')
+    .select('co2_saved_kg, created_at')
+    .eq('user_id', userId)
+    .gte('created_at', sinceIso);
+  if (error) {
+    return 0;
+  }
+  return (data as { co2_saved_kg: number }[] | null)?.reduce((sum, r) => sum + (Number(r.co2_saved_kg) || 0), 0) ?? 0;
+}
+
+// Fetch the caller's saved CO2 since a specific YYYY-MM-DD (inclusive, local midnight)
+export async function fetchMyCo2SavedSince(dateYmd: string): Promise<number> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
+    return 0;
+  }
+  // Basic validation and conversion to ISO start of day
+  const safe = /^\d{4}-\d{2}-\d{2}$/.test(dateYmd) ? dateYmd : undefined;
+  if (!safe) {
+    return fetchMyTotalCo2Saved();
+  }
+  const since = new Date(`${safe}T00:00:00`);
+  const sinceIso = since.toISOString();
+  const userId = userData.user.id;
+  const { data, error } = await supabase
+    .from('user_actions')
+    .select('co2_saved_kg, created_at')
+    .eq('user_id', userId)
+    .gte('created_at', sinceIso);
+  if (error) {
+    return 0;
+  }
+  return (data as { co2_saved_kg: number }[] | null)?.reduce((sum, r) => sum + (Number(r.co2_saved_kg) || 0), 0) ?? 0;
+}
+
+// Lightweight local pub/sub for CO2 total updates
+type Co2Listener = () => void;
+const co2Listeners = new Set<Co2Listener>();
+export function subscribeCo2TotalUpdated(listener: Co2Listener) {
+  co2Listeners.add(listener);
+  return () => co2Listeners.delete(listener);
+}
+function notifyCo2TotalUpdated() {
+  co2Listeners.forEach((l) => l());
 }
 
 

@@ -13,7 +13,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      initialRouteName="acount"
+      initialRouteName="index"
       screenOptions={{
         tabBarActiveTintColor: '#ffffff',
         tabBarInactiveTintColor: 'rgba(255,255,255,0.7)',

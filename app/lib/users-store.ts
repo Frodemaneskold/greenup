@@ -10,9 +10,9 @@ export type User = {
 
 let me: User = {
   id: 'me',
-  name: 'Du',
-  username: 'du',
-  email: 'du@example.com',
+  name: '',
+  username: '',
+  email: '',
   avatarUrl: undefined,
   createdAt: '2025-10-01',
   friendsCount: 0,
@@ -33,6 +33,11 @@ export function getCurrentUser(): User {
 
 export function updateCurrentUser(update: Partial<Pick<User, 'name' | 'username' | 'avatarUrl'>>) {
   me = { ...me, ...update };
+  notify();
+}
+
+export function setCurrentUser(user: User) {
+  me = { ...user };
   notify();
 }
 

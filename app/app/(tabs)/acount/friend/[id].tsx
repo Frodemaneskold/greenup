@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { getUserById } from '@/lib/users-store';
+import { supabase } from '@/src/lib/supabase';
 
 function weeksSince(dateIso: string): number {
   const created = new Date(dateIso).getTime();
@@ -13,6 +14,29 @@ function weeksSince(dateIso: string): number {
 export default function FriendProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = typeof id === 'string' ? getUserById(id) : undefined;
+  const [relationLabel, setRelationLabel] = useState('');
+  useEffect(() => {
+    (async () => {
+      if (typeof id !== 'string') return;
+      const { data: me } = await supabase.auth.getUser();
+      const myId = me?.user?.id;
+      if (!myId) return;
+      const { data: rels } = await supabase
+        .from('friend_requests')
+        .select('from_user_id, to_user_id, status, created_at')
+        .or(`and(from_user_id.eq.${myId},to_user_id.eq.${id}),and(from_user_id.eq.${id},to_user_id.eq.${myId})`)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      const r = (rels ?? [])[0] as { from_user_id: string; to_user_id: string; status: string } | undefined;
+      if (r?.status === 'accepted') {
+        setRelationLabel(' • Vän');
+      } else if (r?.status === 'pending' && r.from_user_id === myId) {
+        setRelationLabel(' • Förfrågan skickad');
+      } else {
+        setRelationLabel('');
+      }
+    })();
+  }, [id]);
 
   if (!user) {
     return (
@@ -32,7 +56,7 @@ export default function FriendProfileScreen() {
           <Text style={styles.avatarText}>{user.name.charAt(0)}</Text>
         </View>
         <Text style={styles.name}>{user.name}</Text>
-        <Text style={styles.username}>@{user.username}</Text>
+        <Text style={styles.username}>@{user.username}{relationLabel}</Text>
       </View>
 
       <View style={styles.statsRow}>

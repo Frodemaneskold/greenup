@@ -1,8 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { getFriends, isValidEmail, isValidUsername, sendInvites } from '@/lib/users-store';
-import { addPendingInvites, getPendingInvitesForCompetition, subscribeInvites, acceptInvite, declineInvite } from '@/lib/invites-store';
+import { getFriends, isValidEmail, isValidUsername, subscribeUsers } from '@/lib/users-store';
+import { getPendingInvitesForCompetition, subscribeInvites, acceptInvite, declineInvite } from '@/lib/invites-store';
+import { subscribeFriendRequests } from '@/lib/friend-requests-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { supabase } from '@/src/lib/supabase';
+import { createInvite as createDbInvite } from '@/src/services/invites';
 
 type SelectableFriend = {
   id: string;
@@ -13,11 +18,14 @@ type SelectableFriend = {
 
 export default function InviteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const friends = useMemo(() => getFriends(), []);
+  const [friends, setFriends] = useState<SelectableFriend[]>(() => getFriends() as unknown as SelectableFriend[]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [pending, setPending] = useState(() => (typeof id === 'string' ? getPendingInvitesForCompetition(id) : []));
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const [idToProfile, setIdToProfile] = useState<Record<string, { name: string; username: string }>>({});
 
   React.useEffect(() => {
     const unsub = subscribeInvites(() => {
@@ -25,26 +33,81 @@ export default function InviteScreen() {
         setPending(getPendingInvitesForCompetition(id));
       }
     });
+    const unsubUsers = subscribeUsers(() => {
+      setFriends(getFriends() as unknown as SelectableFriend[]);
+    });
+    const unsubFriendReq = subscribeFriendRequests(() => {
+      // no-op; subscribe triggers store refresh which cascades via subscribeUsers
+    });
     return unsub;
   }, [id]);
+
+  // Resolve profiles for pending invites targeting user ids (friends)
+  React.useEffect(() => {
+    (async () => {
+      const ids = Array.from(
+        new Set(
+          pending
+            .filter((p) => p.target.type === 'friend')
+            .map((p) => (p.target as { type: 'friend'; userId: string }).userId)
+        )
+      ).filter(Boolean) as string[];
+      if (ids.length === 0) {
+        setIdToProfile({});
+        return;
+      }
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, full_name, first_name, last_name, username, email')
+          .in('id', ids);
+        const map: Record<string, { name: string; username: string }> = {};
+        (data ?? []).forEach((row: any) => {
+          const full =
+            row.full_name ||
+            [row.first_name, row.last_name].filter(Boolean).join(' ') ||
+            row.username ||
+            (row.email ?? 'user').split('@')[0];
+          const uname = row.username || (row.email ?? 'user').split('@')[0];
+          map[row.id as string] = { name: String(full), username: String(uname) };
+        });
+        setIdToProfile(map);
+      } catch {
+        // ignore
+      }
+    })();
+  }, [pending]);
 
   const toggle = (userId: string) => {
     setSelected((prev) => ({ ...prev, [userId]: !prev[userId] }));
   };
 
   const onSendSelected = async () => {
-    const targets = Object.keys(selected)
-      .filter((k) => selected[k])
-      .map((userId) => ({ type: 'friend' as const, userId }));
-    if (targets.length === 0 || typeof id !== 'string') {
+    const friendIds = Object.keys(selected).filter((k) => selected[k]);
+    if (friendIds.length === 0 || typeof id !== 'string') {
       Alert.alert('Välj minst en vän');
       return;
     }
     setSubmitting(true);
     try {
-      await sendInvites(id, targets);
-      addPendingInvites(id, targets);
-      Alert.alert('Inbjudningar skickade');
+      let ok = 0;
+      let fail = 0;
+      let firstError: string | null = null;
+      for (const userId of friendIds) {
+        try {
+          await createDbInvite(id, userId);
+          ok++;
+        } catch (e: any) {
+          if (!firstError) firstError = e?.message ?? String(e);
+          fail++;
+        }
+      }
+      const base = `Skickade ${ok} inbjudning(ar)` + (fail ? `, misslyckades: ${fail}` : '');
+      if (fail && firstError) {
+        Alert.alert('Klar (med fel)', `${base}\n\nFel: ${firstError}`);
+      } else {
+        Alert.alert('Klar', base);
+      }
       setSelected({});
     } catch (e) {
       Alert.alert('Något gick fel', 'Försök igen senare.');
@@ -60,25 +123,23 @@ export default function InviteScreen() {
       Alert.alert('Ange ett användarnamn eller en e‑postadress');
       return;
     }
-    let target:
-      | { type: 'email'; email: string }
-      | { type: 'username'; username: string }
-      | null = null;
+    let userId: string | null = null;
     if (isValidEmail(trimmed)) {
-      target = { type: 'email', email: trimmed };
+      const { data } = await supabase.from('profiles').select('id').eq('email', trimmed).single();
+      userId = (data as any)?.id ?? null;
     } else if (isValidUsername(trimmed)) {
-      target = { type: 'username', username: trimmed };
+      const { data } = await supabase.from('profiles').select('id').eq('username', trimmed).single();
+      userId = (data as any)?.id ?? null;
     }
-    if (!target) {
-      Alert.alert('Ogiltig input', 'Kontrollera stavning eller använd en giltig e‑post.');
+    if (!userId) {
+      Alert.alert('Hittade inte användaren', 'Kontrollera stavning eller använd en giltig e‑post.');
       return;
     }
     setSubmitting(true);
     try {
-      await sendInvites(id, [target]);
-      Alert.alert('Inbjudan skickad');
+      await createDbInvite(id, userId);
+      Alert.alert('Inbjudan skickad', 'Notis skickas till användaren.');
       setQuery('');
-      addPendingInvites(id, [target]);
     } catch (e) {
       Alert.alert('Något gick fel', 'Försök igen senare.');
     } finally {
@@ -93,14 +154,22 @@ export default function InviteScreen() {
         <View style={[styles.checkbox, checked && styles.checkboxChecked]} />
         <View style={styles.friendMain}>
           <Text style={styles.friendName}>{item.name}</Text>
-          <Text style={styles.friendMeta}>@{item.username} · {item.email}</Text>
+          <Text style={styles.friendMeta}>@{item.username}</Text>
         </View>
       </TouchableOpacity>
     );
   };
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingTop: insets.top + 56,
+          paddingBottom: 16 + insets.bottom + tabBarHeight,
+        },
+      ]}
+    >
       <Stack.Screen options={{ title: 'Bjud in vänner' }} />
 
       <Text style={styles.sectionTitle}>Vänlista</Text>
@@ -148,7 +217,10 @@ export default function InviteScreen() {
           <View key={inv.id} style={styles.pendingRow}>
             <Text style={styles.pendingText}>
               {inv.target.type === 'friend'
-                ? `Vän ${inv.target.userId}`
+                ? (() => {
+                    const prof = idToProfile[inv.target.userId];
+                    return prof ? `${prof.name} · @${prof.username}` : 'Vän';
+                  })()
                 : inv.target.type === 'email'
                 ? inv.target.email
                 : `@${inv.target.username}`}
