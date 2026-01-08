@@ -1,21 +1,94 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, Platform, TouchableWithoutFeedback } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { createCompetition } from '@/lib/competitions-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/src/lib/supabase';
+import DateTimePicker, { AndroidEvent } from '@react-native-community/datetimepicker';
 
 export default function CreateCompetitionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'start' | 'end'>('start');
+
+  function formatYmd(d: Date | null): string {
+    if (!d) return '';
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function startOfToday(): Date {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  function dateOnly(d: Date): Date {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  function yesterday(): Date {
+    const d = startOfToday();
+    d.setDate(d.getDate() - 1);
+    return d;
+  }
+  function tomorrow(): Date {
+    const d = startOfToday();
+    d.setDate(d.getDate() + 1);
+    return d;
+  }
+
+  function openPicker(mode: 'start' | 'end') {
+    setPickerMode(mode);
+    setShowPicker(true);
+  }
+
+  function onChangeDate(event: AndroidEvent | any, selected?: Date) {
+    // Android: dialog-based picker; close when dismissed or set
+    if (Platform.OS === 'android') {
+      if (event?.type === 'dismissed' || event?.type === 'set') {
+        setShowPicker(false);
+      }
+    }
+    if (!selected) return;
+    const today = startOfToday();
+    const chosen = dateOnly(selected);
+    if (pickerMode === 'start') {
+      // Only allow dates strictly before today
+      if (chosen >= today) {
+        Alert.alert('Ogiltigt startdatum', 'Startdatum måste vara före dagens datum.');
+        return;
+      }
+      setStartDate(chosen);
+      if (endDate && chosen && dateOnly(endDate) < chosen) {
+        setEndDate(null);
+      }
+    } else {
+      // Only allow dates strictly after today, and not before startDate if set
+      if (chosen <= today) {
+        Alert.alert('Ogiltigt slutdatum', 'Slutdatum måste vara efter dagens datum.');
+        return;
+      }
+      if (startDate && chosen < dateOnly(startDate)) {
+        Alert.alert('Ogiltigt slutdatum', 'Slutdatum kan inte vara före startdatum.');
+        return;
+      }
+      setEndDate(chosen);
+    }
+  }
 
   const onCreate = async () => {
     if (!name.trim()) {
       Alert.alert('Namn krävs', 'Ange ett namn för tävlingen.');
+      return;
+    }
+    if (startDate && endDate && endDate < startDate) {
+      Alert.alert('Ogiltiga datum', 'Slutdatum kan inte vara före startdatum.');
       return;
     }
     try {
@@ -28,8 +101,8 @@ export default function CreateCompetitionScreen() {
       const comp = await createCompetition({
         name: name.trim(),
         description: description.trim() || undefined,
-        startDate: startDate.trim() || undefined,
-        endDate: endDate.trim() || undefined,
+        startDate: startDate ? formatYmd(startDate) : undefined,
+        endDate: endDate ? formatYmd(endDate) : undefined,
       });
       Alert.alert('Tävling skapad', 'Inbjudningslänk har kopierats.');
       router.replace({
@@ -64,27 +137,89 @@ export default function CreateCompetitionScreen() {
           style={styles.input}
         />
 
-        <Text style={styles.label}>Startdatum (valfritt)</Text>
-        <TextInput
-          value={startDate}
-          onChangeText={setStartDate}
-          placeholder="YYYY-MM-DD"
-          style={styles.input}
-        />
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Startdatum (valfritt)</Text>
+          {startDate ? (
+            <TouchableOpacity onPress={() => { setStartDate(null); }}>
+              <Text style={styles.undoText}>Ångra</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <TouchableOpacity style={styles.dateBtn} onPress={() => openPicker('start')}>
+          <Text style={styles.dateBtnText}>
+            {startDate ? formatYmd(startDate) : 'Välj startdatum'}
+          </Text>
+        </TouchableOpacity>
 
-        <Text style={styles.label}>Slutdatum (valfritt)</Text>
-        <TextInput
-          value={endDate}
-          onChangeText={setEndDate}
-          placeholder="YYYY-MM-DD"
-          style={styles.input}
-        />
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Slutdatum (valfritt)</Text>
+          {endDate ? (
+            <TouchableOpacity onPress={() => setEndDate(null)}>
+              <Text style={styles.undoText}>Ångra</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <TouchableOpacity style={styles.dateBtn} onPress={() => openPicker('end')}>
+          <Text style={styles.dateBtnText}>
+            {endDate ? formatYmd(endDate) : 'Välj slutdatum'}
+          </Text>
+        </TouchableOpacity>
 
         <TouchableOpacity onPress={onCreate} style={styles.button}>
           <Text style={styles.buttonText}>Skapa privat tävling</Text>
         </TouchableOpacity>
       </View>
       <Text style={styles.tip}>Tävlingar är privata. Bjud in med länk eller användarnamn/e-post.</Text>
+
+      {showPicker && (
+        Platform.OS === 'ios' ? (
+          <TouchableWithoutFeedback onPress={() => setShowPicker(false)}>
+            <View style={styles.pickerOverlay}>
+              <TouchableWithoutFeedback onPress={() => { /* consume */ }}>
+                <View style={styles.pickerCard}>
+                  <DateTimePicker
+                    value={
+                      pickerMode === 'start'
+                        ? (startDate ?? yesterday())
+                        : (endDate ?? (startDate && dateOnly(startDate) > tomorrow() ? dateOnly(startDate) : tomorrow()))
+                    }
+                    mode="date"
+                    display="spinner"
+                    onChange={onChangeDate}
+                    minimumDate={
+                      pickerMode === 'end'
+                        ? (startDate && dateOnly(startDate) > tomorrow() ? dateOnly(startDate) : tomorrow())
+                        : undefined
+                    }
+                    maximumDate={
+                      pickerMode === 'start' ? yesterday() : undefined
+                    }
+                  />
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        ) : (
+          <DateTimePicker
+            value={
+              pickerMode === 'start'
+                ? (startDate ?? yesterday())
+                : (endDate ?? (startDate && dateOnly(startDate) > tomorrow() ? dateOnly(startDate) : tomorrow()))
+            }
+            mode="date"
+            display="default"
+            onChange={onChangeDate}
+            minimumDate={
+              pickerMode === 'end'
+                ? (startDate && dateOnly(startDate) > tomorrow() ? dateOnly(startDate) : tomorrow())
+                : undefined
+            }
+            maximumDate={
+              pickerMode === 'start' ? yesterday() : undefined
+            }
+          />
+        )
+      )}
     </View>
   );
 }
@@ -124,6 +259,47 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontWeight: '700',
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  dateBtn: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e1e1e1',
+  },
+  dateBtnText: {
+    color: '#1f1f1f',
+    fontWeight: '600',
+  },
+  undoText: {
+    color: '#2f7147',
+    fontWeight: '700',
+  },
+  pickerOverlay: {
+    ...StyleSheet.absoluteFillObject as any,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickerCard: {
+    width: '92%',
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   tip: {
     marginTop: 12,

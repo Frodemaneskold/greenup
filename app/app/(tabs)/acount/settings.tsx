@@ -6,6 +6,8 @@ import { clearToken } from '@/lib/session';
 import { supabase } from '@/src/lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import BackgroundPickerCarousel from '@/src/components/profile/BackgroundPickerCarousel';
+import { DEFAULT_PROFILE_BG, safeBackgroundKey, type ProfileBackgroundKey } from '@/src/constants/profileBackgrounds';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -13,8 +15,27 @@ export default function SettingsScreen() {
   const [name, setName] = useState(me.name);
   const [username, setUsername] = useState(me.username);
   const [saving, setSaving] = useState(false);
+  const [bgKey, setBgKey] = useState<ProfileBackgroundKey>(DEFAULT_PROFILE_BG);
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        const myId = userRes.user?.id;
+        if (!myId) return;
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('background_key')
+          .eq('id', myId)
+          .single();
+        setBgKey(safeBackgroundKey((prof as any)?.background_key));
+      } catch {
+        setBgKey(DEFAULT_PROFILE_BG);
+      }
+    })();
+  }, []);
 
   const onSave = async () => {
     const trimmedName = name.trim();
@@ -30,6 +51,8 @@ export default function SettingsScreen() {
     }
     setSaving(true);
     try {
+      // Optimistisk uppdatering lokalt så profilfliken byter bakgrund direkt
+      updateCurrentUser({ name: trimmedName, username: normalizedUser, backgroundKey: bgKey });
       // Kontrollera unikt användarnamn (case-insensitivt) globalt, exkludera mig själv
       const { data: userRes } = await supabase.auth.getUser();
       const myId = userRes.user?.id;
@@ -47,10 +70,12 @@ export default function SettingsScreen() {
       }
       // Uppdatera i Supabase-profil
       if (myId) {
-        await supabase.from('profiles').update({ username: normalizedUser, full_name: trimmedName }).eq('id', myId);
+        await supabase
+          .from('profiles')
+          .update({ username: normalizedUser, full_name: trimmedName, background_key: bgKey })
+          .eq('id', myId);
       }
-      // Uppdatera lokalt
-      updateCurrentUser({ name: trimmedName, username: normalizedUser });
+      // Lokalt är redan uppdaterat optimistiskt ovan
       Alert.alert('Sparat');
       router.back();
     } finally {
@@ -68,6 +93,9 @@ export default function SettingsScreen() {
         <Text style={styles.label}>Användarnamn</Text>
         <TextInput value={username} onChangeText={setUsername} style={styles.input} placeholder="unikt_användarnamn" autoCapitalize="none" />
 
+        <Text style={styles.label}>Profiltema</Text>
+        <BackgroundPickerCarousel initialKey={bgKey} onChange={(k) => setBgKey(k)} />
+
         <TouchableOpacity style={[styles.button, saving && styles.disabled]} onPress={onSave} disabled={saving}>
           <Text style={styles.buttonText}>Spara</Text>
         </TouchableOpacity>
@@ -81,7 +109,7 @@ export default function SettingsScreen() {
           await clearToken();
           router.replace('/login');
         }}
-        style={[styles.logoutBtn, { marginBottom: 8 + insets.bottom + tabBarHeight }]}
+        style={[styles.logoutBtn, { marginBottom: 4 + tabBarHeight }]}
       >
         <Text style={styles.logoutText}>Logga ut</Text>
       </TouchableOpacity>

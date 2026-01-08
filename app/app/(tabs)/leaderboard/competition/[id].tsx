@@ -8,7 +8,17 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { supabase } from '@/src/lib/supabase';
 import { fetchUserCo2SavedSince, fetchUserTotalCo2Saved } from '@/src/services/missions';
 
-const currentUserId = 'me';
+let currentUserId: string | null = null;
+async function ensureCurrentUserId() {
+  if (currentUserId) return currentUserId;
+  try {
+    const { data } = await supabase.auth.getUser();
+    currentUserId = data?.user?.id ?? null;
+  } catch {
+    currentUserId = null;
+  }
+  return currentUserId;
+}
 
 export default function CompetitionDetailScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
@@ -33,6 +43,7 @@ export default function CompetitionDetailScreen() {
   async function loadLeaderboard() {
     if (typeof id !== 'string') return;
     try {
+      await ensureCurrentUserId();
       // Fetch competition (for start date)
       const { data: compRow } = await supabase
         .from('competitions')
@@ -40,17 +51,12 @@ export default function CompetitionDetailScreen() {
         .eq('id', id)
         .single();
       const startDate: string | undefined = (compRow as any)?.start_date ?? competition?.startDate;
-      // Fetch participants from Supabase
+      // Fetch participants from Supabase (authoritative)
       const { data: parts } = await supabase
         .from('competition_participants')
         .select('user_id')
         .eq('competition_id', id);
-      let userIds = ((parts as any[]) ?? []).map((p) => p.user_id as string);
-      // Fallback to local participants if Supabase has none (e.g. offline or insert blocked)
-      if (userIds.length === 0) {
-        const local = competition?.participants ?? [];
-        userIds = local.map((p) => p.id);
-      }
+      const userIds = ((parts as any[]) ?? []).map((p) => p.user_id as string);
       if (userIds.length === 0) {
         setEntries([]);
         return;
@@ -160,6 +166,7 @@ export default function CompetitionDetailScreen() {
       <Stack.Screen
         options={{
           title: (typeof name === 'string' && name) ? name : competition?.name ?? `Tävling #${id || ''}`,
+          headerRightContainerStyle: { marginRight: 0, paddingRight: 0 },
           headerRight: () =>
             typeof id === 'string' ? (
               <Link href={{ pathname: '/(tabs)/leaderboard/competition/[id]/invite', params: { id } }} asChild>

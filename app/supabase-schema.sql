@@ -80,4 +80,95 @@ for delete using (
 -- Realtime
 -- Enable for tables: competitions, competition_participants, user_actions (already used)
 
+-- === Profiles: background_key default and signup trigger ===
+-- Ensure background_key exists and defaults to 'bg_02'
+alter table if exists public.profiles
+  add column if not exists background_key text;
+
+-- Set default to 'bg_02'
+alter table if exists public.profiles
+  alter column background_key set default 'bg_02';
+
+-- Backfill any existing NULLs to the default
+update public.profiles
+set background_key = 'bg_02'
+where background_key is null;
+
+-- Optional: constrain allowed values (bg_01..bg_07). Skip if already present.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'profiles_background_key_allowed'
+  ) then
+    alter table public.profiles
+      add constraint profiles_background_key_allowed
+      check (background_key in ('bg_01','bg_02','bg_03','bg_04','bg_05','bg_06','bg_07'));
+  end if;
+end
+$$;
+
+-- Trigger: create profile on new auth.users with background_key = 'bg_02'
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, username, full_name, background_key)
+  values (
+    new.id,
+    coalesce(nullif(trim((new.raw_user_meta_data->>'username')::text), ''), null),
+    coalesce(
+      nullif(
+        trim(
+          coalesce((new.raw_user_meta_data->>'first_name')::text, '') || ' ' ||
+          coalesce((new.raw_user_meta_data->>'last_name')::text, '')
+        ),
+        ''
+      ),
+      null
+    ),
+    'bg_02'
+  )
+  on conflict (id) do update
+  set background_key = excluded.background_key
+  where public.profiles.id = excluded.id
+    and coalesce(public.profiles.background_key, '') = '';
+  return new;
+end;
+$$;
+
+-- Create trigger once
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_trigger
+    where tgname = 'create_profile_on_signup'
+  ) then
+    create trigger create_profile_on_signup
+    after insert on auth.users
+    for each row execute procedure public.handle_new_user();
+  end if;
+end
+$$;
+
+-- === Missions: quantity fields and specific mission setup ===
+-- Add quantity fields with minimal schema changes
+alter table if exists public.missions
+  add column if not exists quantity_mode int,
+  add column if not exists quantity_unit text,
+  add column if not exists quantity_multiplier numeric;
+
+-- Set quantity fields for the "panta burkar" mission
+update public.missions
+set
+  quantity_mode = 1,
+  quantity_unit = 'SEK',
+  quantity_multiplier = 0.1
+where lower(title) = 'panta burkar';
+
 

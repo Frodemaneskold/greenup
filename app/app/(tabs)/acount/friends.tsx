@@ -1,31 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { Link, Stack } from 'expo-router';
 import { type User } from '@/lib/users-store';
-import { getCompetitions } from '@/lib/competitions-store';
 import { supabase } from '@/src/lib/supabase';
 
 type FriendWithTotal = User & { totalCo2: number };
 
-function computeTotals(friends: User[]): FriendWithTotal[] {
-  const comps = getCompetitions();
-  const totals: Record<string, number> = {};
-  for (const c of comps) {
-    for (const p of c.participants) {
-      totals[p.id] = (totals[p.id] ?? 0) + p.co2ReducedKg;
-    }
-  }
-  return friends
-    .map((f) => ({ ...f, totalCo2: totals[f.id] ?? 0 }))
-    .sort((a, b) => b.totalCo2 - a.totalCo2);
-}
-
 export default function FriendsScreen() {
-  const [friends, setFriends] = useState<User[]>([]);
-  const data = useMemo(() => computeTotals(friends), [friends]);
+  const [friends, setFriends] = useState<FriendWithTotal[]>([]);
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let actionsChannel: ReturnType<typeof supabase.channel> | null = null;
     (async () => {
       const { data: me } = await supabase.auth.getUser();
       const myId = me?.user?.id;
@@ -43,30 +29,40 @@ export default function FriendsScreen() {
             (rels ?? []).map((r: any) => (r.from_user_id === myId ? r.to_user_id : r.from_user_id))
           )
         );
-        if (otherIds.length === 0) {
-          setFriends([]);
-          return;
-        }
         const { data: profs } = await supabase
           .from('profiles')
           .select('id, username, full_name, first_name, last_name, email')
-          .in('id', otherIds);
-        const mapped: User[] =
+          .in('id', otherIds.length ? otherIds : ['00000000-0000-0000-0000-000000000000']);
+        // Sum CO2 totals for all friend ids in one query
+        const { data: actions } = await supabase
+          .from('user_actions')
+          .select('user_id, co2_saved_kg')
+          .in('user_id', otherIds.length ? otherIds : ['00000000-0000-0000-0000-000000000000']);
+        const totals = new Map<string, number>();
+        for (const row of (actions as any[]) ?? []) {
+          const uid = String((row as any).user_id ?? '');
+          const val = Number((row as any).co2_saved_kg ?? 0) || 0;
+          totals.set(uid, (totals.get(uid) ?? 0) + val);
+        }
+        const mapped: FriendWithTotal[] =
           (profs ?? []).map((p: any) => {
             const fullName =
               p.full_name ||
               [p.first_name, p.last_name].filter(Boolean).join(' ') ||
               p.username ||
               (p.email ?? 'user').split('@')[0];
+            const total = totals.get(p.id as string) ?? 0;
             return {
               id: p.id,
               name: fullName,
               username: p.username ?? (p.email ?? 'user').split('@')[0],
               email: p.email ?? '',
               createdAt: new Date().toISOString().slice(0, 10),
-            } as User;
+              totalCo2: total,
+            } as FriendWithTotal;
           }) ?? [];
-        setFriends(mapped);
+        // Sort by total saved CO2 desc
+        setFriends(mapped.sort((a, b) => b.totalCo2 - a.totalCo2));
       }
       await load();
       // Realtime: uppdatera när relationer ändras
@@ -83,9 +79,19 @@ export default function FriendsScreen() {
           load
         )
         .subscribe();
+      // Realtime: uppdatera när user_actions får nya rader (någon vän loggar en handling)
+      actionsChannel = supabase
+        .channel('realtime:friends_user_actions')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'user_actions' },
+          load
+        )
+        .subscribe();
     })();
     return () => {
       if (channel) supabase.removeChannel(channel);
+      if (actionsChannel) supabase.removeChannel(actionsChannel);
     };
   }, []);
 
@@ -102,7 +108,7 @@ export default function FriendsScreen() {
         )}
       </View>
       <FlatList
-        data={data}
+        data={friends}
         keyExtractor={(f) => f.id}
         renderItem={({ item }) => (
           <Link href={{ pathname: '/(tabs)/acount/friend/[id]', params: { id: item.id } }} asChild>

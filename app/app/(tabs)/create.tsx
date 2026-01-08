@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ImageBackground, Pressable, Image, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ImageBackground, Pressable, Image, RefreshControl, Alert, TextInput, Keyboard } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { fetchMissions, fetchTodayCounts, logUserAction, type Mission } from '@/src/services/missions';
+import { MISSION_IMAGES, safeMissionImageKey } from '@/src/constants/missionImages';
+import { fetchMissions, fetchTodayCounts, logUserAction, logUserActionWithCo2, type Mission } from '@/src/services/missions';
 
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
@@ -18,6 +19,8 @@ export default function CreateScreen() {
     hem: false,
   });
   const [countsMap, setCountsMap] = useState<Record<string, number>>({});
+  const [quantityValue, setQuantityValue] = useState<string>('');
+  const [quantityError, setQuantityError] = useState<string>('');
 
   const CATEGORIES = useMemo(
     () => [
@@ -65,6 +68,8 @@ export default function CreateScreen() {
 
   const openConfirm = (mission: Mission) => {
     setSelectedMission(mission);
+    setQuantityValue('');
+    setQuantityError('');
   };
 
   const confirmDo = async () => {
@@ -77,7 +82,27 @@ export default function CreateScreen() {
       return;
     }
     try {
-      await logUserAction(selectedMission);
+      if (selectedMission.quantity_mode === 1) {
+        const raw = (quantityValue ?? '').trim().replace(',', '.');
+        const val = Number.parseFloat(raw);
+        if (!Number.isFinite(val) || val <= 0) {
+          setQuantityError('Ange ett tal större än 0.');
+          return;
+        }
+        if (val > 1000) {
+          setQuantityError('Maxvärde är 1000.');
+          return;
+        }
+        const multiplier = Number(selectedMission.quantity_multiplier ?? 0);
+        if (!(multiplier > 0)) {
+          Alert.alert('Fel', 'Den här uppgiften saknar giltig multiplier.');
+          return;
+        }
+        const co2 = Math.round(val * multiplier * 100) / 100; // 2 decimaler
+        await logUserActionWithCo2(selectedMission, co2);
+      } else {
+        await logUserAction(selectedMission);
+      }
       setCountsMap((prev) => ({ ...prev, [selectedMission.id]: (prev[selectedMission.id] ?? 0) + 1 }));
     } catch (e: any) {
       Alert.alert('Fel', e?.message ?? 'Kunde inte logga handlingen.');
@@ -148,12 +173,22 @@ export default function CreateScreen() {
             {expanded[cat.key] &&
               (groupedByCategory[cat.key]?.length
                 ? groupedByCategory[cat.key].map((m) => {
+                    const imgKey = safeMissionImageKey(m.image_key);
                     const count = countsMap[m.id] ?? 0;
                     const max = Math.max(1, m.max_per_day ?? 1);
                     const percent = Math.min(100, Math.round((count / max) * 100));
                     const disabled = count >= max;
                     return (
                       <View key={m.id} style={styles.card}>
+                        <View style={styles.cardImage}>
+                          <Image
+                            source={MISSION_IMAGES[imgKey]}
+                            style={styles.cardImageImg}
+                            resizeMode="cover"
+                            accessible
+                            accessibilityLabel={`Illustration för ${m.title}`}
+                          />
+                        </View>
                         <View style={styles.cardHeader}>
                           <Text style={styles.cardName}>{m.title}</Text>
                           <Text style={styles.cardCount}>Idag: {count} / {max}</Text>
@@ -190,31 +225,61 @@ export default function CreateScreen() {
             experimentalBlurMethod="dimezisBlurView"
             style={StyleSheet.absoluteFill}
           />
+          {/* Tap outside should only dismiss the keyboard, not close the mission modal */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => Keyboard.dismiss()} />
           <View style={styles.modalCenter} pointerEvents="box-none">
-            <Pressable style={styles.modalCard} accessibilityRole="dialog" accessibilityLabel={selectedMission.title}>
-              <Text style={styles.modalTitle}>{selectedMission.title}</Text>
-              <View style={styles.modalIllustration}>
-                <Image
-                  source={require('@/assets/images/Pantbild.png')}
-                  style={styles.modalIllustrationImg}
-                  resizeMode="cover"
-                  accessible
-                  accessibilityLabel="Illustration för Panta"
-                />
-              </View>
-              <Text style={styles.modalText}>
-                {selectedMission.description ??
-                  'Att panta sparar energi och minskar behovet av nya råvaror. Fortsätt bidra!'}
-              </Text>
-              <View style={styles.modalBtns}>
-                <TouchableOpacity onPress={closeConfirm} style={[styles.modalBtn, styles.modalCancel]}>
-                  <Text style={styles.modalBtnCancelText}>Avbryt</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={confirmDo} style={[styles.modalBtn, styles.modalPrimary]}>
-                  <Text style={styles.modalBtnText}>Gör</Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
+            <View style={styles.modalCard} accessibilityRole="dialog" accessibilityLabel={selectedMission.title}>
+              <Pressable onPress={() => Keyboard.dismiss()}>
+                <Text style={styles.modalTitle}>{selectedMission.title}</Text>
+                <View style={styles.modalIllustration}>
+                  <Image
+                    source={MISSION_IMAGES[safeMissionImageKey(selectedMission.image_key)]}
+                    style={styles.modalIllustrationImg}
+                    resizeMode="cover"
+                    accessible
+                    accessibilityLabel={`Illustration för ${selectedMission.title}`}
+                  />
+                </View>
+                <Text style={styles.modalText}>
+                  {selectedMission.description ??
+                    'Att panta sparar energi och minskar behovet av nya råvaror. Fortsätt bidra!'}
+                </Text>
+              </Pressable>
+              {selectedMission.quantity_mode === 1 ? (
+                <View style={{ gap: 6, marginBottom: 8 }}>
+                  <Text style={{ color: '#1f1f1f', fontWeight: '600', textAlign: 'center' }}>
+                    Ange mängd ({selectedMission.quantity_unit ?? ''})
+                  </Text>
+                  <TextInput
+                    value={quantityValue}
+                    onChangeText={(t) => {
+                      setQuantityValue(t);
+                      if (quantityError) setQuantityError('');
+                    }}
+                    placeholder={`Ange värde i ${selectedMission.quantity_unit ?? ''}`}
+                    keyboardType="decimal-pad"
+                    inputMode="decimal"
+                    style={styles.modalInput}
+                  />
+                  {quantityError ? <Text style={styles.modalError}>{quantityError}</Text> : null}
+                  {Number(selectedMission.quantity_multiplier ?? 0) > 0 && (quantityValue || '').trim() ? (
+                    <Text style={styles.modalHint}>
+                      ≈ {(Math.round((Number((quantityValue || '').trim().replace(',', '.')) || 0) * Number(selectedMission.quantity_multiplier) * 100) / 100).toFixed(2)} kg CO₂e
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+              <Pressable onPress={() => Keyboard.dismiss()}>
+                <View style={styles.modalBtns}>
+                  <TouchableOpacity onPress={closeConfirm} style={[styles.modalBtn, styles.modalCancel]}>
+                    <Text style={styles.modalBtnCancelText}>Avbryt</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={confirmDo} style={[styles.modalBtn, styles.modalPrimary]}>
+                    <Text style={styles.modalBtnText}>{selectedMission.quantity_mode === 1 ? 'Spara' : 'Gör'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </Pressable>
+            </View>
           </View>
         </View>
       )}
@@ -255,6 +320,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     gap: 10,
+  },
+  cardImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#eaeaea',
+  },
+  cardImageImg: {
+    width: '100%',
+    height: '100%',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -345,6 +421,23 @@ const styles = StyleSheet.create({
     color: '#2a2a2a',
     textAlign: 'center',
     marginBottom: 12,
+  },
+  modalInput: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.2)',
+    color: '#1f1f1f',
+  },
+  modalError: {
+    color: '#e53935',
+    textAlign: 'center',
+  },
+  modalHint: {
+    color: '#2a2a2a',
+    textAlign: 'center',
   },
   modalBtns: {
     flexDirection: 'row',

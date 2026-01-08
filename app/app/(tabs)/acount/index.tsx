@@ -5,10 +5,28 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getCompetitions } from '@/lib/competitions-store';
 import { getCurrentUser, getFriends, subscribeUsers, setCurrentUser, type User } from '@/lib/users-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { isLoggedIn } from '@/lib/session';
 import { supabase } from '@/src/lib/supabase';
+import { Image } from 'expo-image';
+import {
+  DEFAULT_PROFILE_BG,
+  PROFILE_BACKGROUNDS_PORTRAIT,
+  safeBackgroundKey,
+  type ProfileBackgroundKey,
+} from '@/src/constants/profileBackgrounds';
+import { subscribeFriendRequests } from '@/lib/friend-requests-store';
 
 type FriendWithTotal = User & { totalCo2: number };
+
+function formatRankLabel(rank: number | null): string {
+  if (!rank || rank < 1 || !Number.isFinite(rank)) return '—';
+  if (rank <= 10) return `${rank}a`;
+  if (rank <= 50) return 'Top 50';
+  if (rank <= 100) return 'Top 100';
+  const bucket = Math.ceil(rank / 100) * 100;
+  return `Top ${bucket}`;
+}
 
 function computeFriendTotals(): FriendWithTotal[] {
   const comps = getCompetitions();
@@ -44,11 +62,73 @@ function computeMyRank(myId: string): number {
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const extraTopSpacing = 24; // push content a bit further down
   const [me, setMe] = useState(getCurrentUser());
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [friends, setFriends] = useState<FriendWithTotal[]>(computeFriendTotals());
   const [friendCount, setFriendCount] = useState<number>(0);
-  const myRank = useMemo(() => computeMyRank(me.id), [me, friends]);
+  const [bgKey, setBgKey] = useState<ProfileBackgroundKey>(DEFAULT_PROFILE_BG);
+  const [worldRank, setWorldRank] = useState<number | null>(null);
+  const [worldRankLabel, setWorldRankLabel] = useState<string>('—');
+
+  async function loadFriendTotalsFromSupabase() {
+    try {
+      const base = getFriends();
+      const ids = base.map((f) => f.id);
+      if (ids.length === 0) {
+        setFriends([]);
+        return;
+      }
+      const { data: actions } = await supabase
+        .from('user_actions')
+        .select('user_id, co2_saved_kg')
+        .in('user_id', ids);
+      const totals = new Map<string, number>();
+      for (const row of (actions as any[]) ?? []) {
+        const uid = String((row as any).user_id ?? '');
+        const val = Number((row as any).co2_saved_kg ?? 0) || 0;
+        totals.set(uid, (totals.get(uid) ?? 0) + val);
+      }
+      const mapped: FriendWithTotal[] = base.map((f) => ({
+        ...f,
+        totalCo2: totals.get(f.id) ?? 0,
+      }));
+      setFriends(mapped.sort((a, b) => b.totalCo2 - a.totalCo2));
+    } catch {
+      // fallback to local competitions aggregate if Supabase call fails
+      setFriends(computeFriendTotals());
+    }
+  }
+
+  async function refreshWorldRank(forUserId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('user_actions')
+        .select('user_id, co2_saved_kg');
+      if (error) {
+        setWorldRank(null);
+        setWorldRankLabel('—');
+        return;
+      }
+      const totals = new Map<string, number>();
+      for (const row of (data as any[]) ?? []) {
+        const uid = String((row as any).user_id ?? '');
+        const val = Number((row as any).co2_saved_kg ?? 0) || 0;
+        totals.set(uid, (totals.get(uid) ?? 0) + val);
+      }
+      const sorted = [...totals.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([uid]) => uid);
+      const idx = sorted.findIndex((uid) => uid === forUserId);
+      const position = idx >= 0 ? idx + 1 : null;
+      setWorldRank(position);
+      setWorldRankLabel(formatRankLabel(position));
+    } catch {
+      setWorldRank(null);
+      setWorldRankLabel('—');
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -88,7 +168,7 @@ export default function AccountScreen() {
         try {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('username, full_name, first_name, last_name')
+            .select('username, full_name, first_name, last_name, background_key')
             .eq('id', user.id)
             .single();
           username = (profile as any)?.username ?? undefined;
@@ -96,9 +176,17 @@ export default function AccountScreen() {
           const pfFirst: string | undefined = (profile as any)?.first_name;
           const pfLast: string | undefined = (profile as any)?.last_name;
           fullName = (profile as any)?.full_name ?? ([pfFirst, pfLast].filter(Boolean).join(' ') || undefined);
+          const key: string | null | undefined = (profile as any)?.background_key;
+          setBgKey(safeBackgroundKey(key));
+          // Uppdatera lokalt state för instant UI (utan att vänta på realtime)
+          updateCurrentUser({ backgroundKey: safeBackgroundKey(key) });
         } catch {
           // Ignorera fel vid läsning av profil
         }
+        // Ladda global rank
+        await refreshWorldRank(user.id);
+        // Ladda vänners CO2-besparing
+        await loadFriendTotalsFromSupabase();
         const meta = user.user_metadata ?? {};
         const metaFirst = typeof meta.first_name === 'string' ? meta.first_name : '';
         const metaLast = typeof meta.last_name === 'string' ? meta.last_name : '';
@@ -121,12 +209,21 @@ export default function AccountScreen() {
   }, []);
 
   useEffect(() => {
+    // Initiera vänförfrågningar för att populera lokala vänlistan (users-store)
+    const unsubscribeFriendReq = subscribeFriendRequests(() => {
+      // users-store uppdateras internt via addFriend(); AccountScreen lyssnar redan via subscribeUsers
+    });
+
     const unsub = subscribeUsers(() => {
       setMe(getCurrentUser());
-      setFriends(computeFriendTotals());
+      void loadFriendTotalsFromSupabase();
+      const k = getCurrentUser().backgroundKey;
+      if (k) setBgKey(k);
     });
     // Realtime för ändrade relationer påverkar vännantal
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let channelRank: ReturnType<typeof supabase.channel> | null = null;
+    let channelFriendTotals: ReturnType<typeof supabase.channel> | null = null;
     (async () => {
       try {
         const { data: me } = await supabase.auth.getUser();
@@ -145,6 +242,9 @@ export default function AccountScreen() {
           );
           setFriendCount(otherIds.length);
         }
+        async function reloadRank() {
+          await refreshWorldRank(myId);
+        }
         channel = supabase
           .channel('realtime:friend_count:' + myId)
           .on(
@@ -157,6 +257,32 @@ export default function AccountScreen() {
             { event: '*', schema: 'public', table: 'friend_requests', filter: `from_user_id=eq.${myId}` },
             reloadCount
           )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${myId}` },
+            (payload: any) => {
+              const key = (payload?.new as any)?.background_key ?? (payload?.old as any)?.background_key ?? null;
+              setBgKey(safeBackgroundKey(key));
+            }
+          )
+          .subscribe();
+        // Lyssna på globala insättningar i user_actions för att uppdatera rank
+        channelRank = supabase
+          .channel('realtime:world_rank')
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'user_actions' },
+            reloadRank
+          )
+          .subscribe();
+        // Lyssna på user_actions för att uppdatera vänners totals
+        channelFriendTotals = supabase
+          .channel('realtime:friends_totals:' + myId)
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'user_actions' },
+            () => { void loadFriendTotalsFromSupabase(); }
+          )
           .subscribe();
       } catch {
         // ignore
@@ -164,7 +290,10 @@ export default function AccountScreen() {
     })();
     return () => {
       unsub();
+      unsubscribeFriendReq();
       if (channel) supabase.removeChannel(channel);
+      if (channelRank) supabase.removeChannel(channelRank);
+      if (channelFriendTotals) supabase.removeChannel(channelFriendTotals);
     };
   }, []);
 
@@ -175,10 +304,23 @@ export default function AccountScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: 16 + insets.top }]}>
+    <View style={[styles.container, { paddingTop: headerHeight + extraTopSpacing }]}>
+      {/* Full-screen background image (top-aligned cover) */}
+      <View style={styles.bgContainer} pointerEvents="none">
+        <Image
+          source={PROFILE_BACKGROUNDS_PORTRAIT[bgKey]}
+          style={styles.bgImage}
+          contentFit="cover"
+          contentPosition="top center"
+        />
+        <View style={styles.bgOverlay} />
+      </View>
       <Stack.Screen
         options={{
           title: 'Profil',
+          headerTransparent: true,
+          headerStyle: { backgroundColor: 'transparent' },
+          headerShadowVisible: false,
           headerRight: () => (
             <Link href="/(tabs)/acount/settings" asChild>
               <TouchableOpacity style={styles.headerBtn} accessibilityLabel="Profilinställningar">
@@ -205,7 +347,7 @@ export default function AccountScreen() {
           </TouchableOpacity>
         </Link>
         <View style={styles.statBox}>
-          <Text style={styles.statNumber}>#{myRank}</Text>
+          <Text style={styles.statNumber}>{worldRankLabel}</Text>
           <Text style={styles.statLabel}>Rank</Text>
         </View>
       </View>
@@ -255,6 +397,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#a7c7a3',
     paddingHorizontal: 16,
+  },
+  bgContainer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgImage: {
+    width: '100%',
+    height: '100%',
+  },
+  bgOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#a7c7a3',
+    opacity: 0.2,
   },
   headerBtn: {
     backgroundColor: '#2f7147',

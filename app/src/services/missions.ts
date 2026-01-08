@@ -7,6 +7,10 @@ export type Mission = {
   co2_kg: number;
   max_per_day: number;
   description?: string | null;
+  quantity_mode?: number | null;
+  quantity_unit?: string | null;
+  quantity_multiplier?: number | null;
+  image_key?: string | null;
 };
 
 function startOfTodayIso(): string {
@@ -18,7 +22,7 @@ function startOfTodayIso(): string {
 export async function fetchMissions(): Promise<Mission[]> {
   const { data, error } = await supabase
     .from('missions')
-    .select('id,title,category,co2_kg,max_per_day,description')
+    .select('id,title,category,co2_kg,max_per_day,description,quantity_mode,quantity_unit,quantity_multiplier,image_key')
     .order('category', { ascending: true })
     .order('title', { ascending: true });
   if (error) {
@@ -70,6 +74,23 @@ export async function logUserAction(mission: Mission): Promise<void> {
     throw new Error(error.message);
   }
   // Notify local listeners so UI can update immediately even without realtime
+  notifyCo2TotalUpdated();
+}
+
+export async function logUserActionWithCo2(mission: Mission, co2SavedKg: number): Promise<void> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    throw new Error('Du måste vara inloggad för att utföra uppdrag.');
+  }
+  const userId = userData.user.id;
+  const { error } = await supabase.from('user_actions').insert({
+    user_id: userId,
+    mission_id: mission.id,
+    co2_saved_kg: co2SavedKg,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
   notifyCo2TotalUpdated();
 }
 

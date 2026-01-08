@@ -1,6 +1,6 @@
 import { Tabs, Link } from 'expo-router';
 import React from 'react';
-import { StyleSheet, View, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, Image } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { HapticTab } from '@/components/haptic-tab';
@@ -65,14 +65,30 @@ export default function TabLayout() {
               </TouchableOpacity>
             </Link>
           ),
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Image
+              source={{
+                uri: 'https://img.icons8.com/?size=100&id=8xhovyHdOQzF&format=png&color=000000',
+              }}
+              style={{ width: 28, height: 28, tintColor: color }}
+              resizeMode="contain"
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="leaderboard"
         options={{
-          title: 'Topplista',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="trophy.fill" color={color} />,
+          title: 'Tävlingar',
+          tabBarIcon: ({ color }) => (
+            <Image
+              source={{
+                uri: 'https://img.icons8.com/?size=100&id=0mAtpPoNoAEd&format=png&color=000000',
+              }}
+              style={{ width: 28, height: 28, tintColor: color }}
+              resizeMode="contain"
+            />
+          ),
         }}
       />
       <Tabs.Screen
@@ -85,7 +101,15 @@ export default function TabLayout() {
           headerTitleStyle: { color: '#1f1f1f' },
           headerTintColor: '#1f1f1f',
           headerShadowVisible: false,
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="plus.circle.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Image
+              source={{
+                uri: 'https://img.icons8.com/?size=100&id=GqJpEbXPcmLg&format=png&color=000000',
+              }}
+              style={{ width: 28, height: 28, tintColor: color }}
+              resizeMode="contain"
+            />
+          ),
         }}
       />
       <Tabs.Screen
@@ -99,14 +123,30 @@ export default function TabLayout() {
           headerTitleStyle: { color: '#1f1f1f' },
           headerTintColor: '#1f1f1f',
           headerShadowVisible: false,
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="info.circle.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Image
+              source={{
+                uri: 'https://img.icons8.com/?size=100&id=40JxrZB76JLv&format=png&color=000000',
+              }}
+              style={{ width: 28, height: 28, tintColor: color }}
+              resizeMode="contain"
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="acount"
         options={{
           title: 'Profil',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Image
+              source={{
+                uri: 'https://img.icons8.com/?size=100&id=p8UFrp2VUgHR&format=png&color=000000',
+              }}
+              style={{ width: 28, height: 28, tintColor: color }}
+              resizeMode="contain"
+            />
+          ),
         }}
       />
     </Tabs>

@@ -2,12 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { getFriends, isValidEmail, isValidUsername, subscribeUsers } from '@/lib/users-store';
-import { getPendingInvitesForCompetition, subscribeInvites, acceptInvite, declineInvite } from '@/lib/invites-store';
+import { getPendingInvitesForCompetition, subscribeInvites, addPendingInvites, syncPendingInvitesForCompetition } from '@/lib/invites-store';
 import { subscribeFriendRequests } from '@/lib/friend-requests-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { supabase } from '@/src/lib/supabase';
 import { createInvite as createDbInvite } from '@/src/services/invites';
+import { useFocusEffect } from '@react-navigation/native';
 
 type SelectableFriend = {
   id: string;
@@ -25,7 +26,6 @@ export default function InviteScreen() {
   const [pending, setPending] = useState(() => (typeof id === 'string' ? getPendingInvitesForCompetition(id) : []));
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const [idToProfile, setIdToProfile] = useState<Record<string, { name: string; username: string }>>({});
 
   React.useEffect(() => {
     const unsub = subscribeInvites(() => {
@@ -42,40 +42,25 @@ export default function InviteScreen() {
     return unsub;
   }, [id]);
 
-  // Resolve profiles for pending invites targeting user ids (friends)
-  React.useEffect(() => {
-    (async () => {
-      const ids = Array.from(
-        new Set(
-          pending
-            .filter((p) => p.target.type === 'friend')
-            .map((p) => (p.target as { type: 'friend'; userId: string }).userId)
-        )
-      ).filter(Boolean) as string[];
-      if (ids.length === 0) {
-        setIdToProfile({});
-        return;
+  // On focus, refresh pending invites for this competition from server,
+  // so that already-sent invites are reflected when re-entering.
+  useFocusEffect(
+    React.useCallback(() => {
+      if (typeof id === 'string') {
+        void syncPendingInvitesForCompetition(id);
       }
-      try {
-        const { data } = await supabase
-          .from('profiles')
-          .select('id, full_name, first_name, last_name, username, email')
-          .in('id', ids);
-        const map: Record<string, { name: string; username: string }> = {};
-        (data ?? []).forEach((row: any) => {
-          const full =
-            row.full_name ||
-            [row.first_name, row.last_name].filter(Boolean).join(' ') ||
-            row.username ||
-            (row.email ?? 'user').split('@')[0];
-          const uname = row.username || (row.email ?? 'user').split('@')[0];
-          map[row.id as string] = { name: String(full), username: String(uname) };
-        });
-        setIdToProfile(map);
-      } catch {
-        // ignore
+    }, [id])
+  );
+
+  // Build a set of friend userIds already invited to this competition (pending)
+  const invitedFriendIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const inv of pending) {
+      if (inv.target.type === 'friend') {
+        ids.add((inv.target as { type: 'friend'; userId: string }).userId);
       }
-    })();
+    }
+    return ids;
   }, [pending]);
 
   const toggle = (userId: string) => {
@@ -93,7 +78,9 @@ export default function InviteScreen() {
       let ok = 0;
       let fail = 0;
       let firstError: string | null = null;
-      for (const userId of friendIds) {
+      // Skip already invited friends just in case
+      const filtered = friendIds.filter((uid) => !invitedFriendIds.has(uid));
+      for (const userId of filtered) {
         try {
           await createDbInvite(id, userId);
           ok++;
@@ -101,6 +88,10 @@ export default function InviteScreen() {
           if (!firstError) firstError = e?.message ?? String(e);
           fail++;
         }
+      }
+      // Immediately reflect locally to prevent re-inviting right away
+      if (filtered.length > 0) {
+        addPendingInvites(id, filtered.map((uid) => ({ type: 'friend', userId: uid } as const)));
       }
       const base = `Skickade ${ok} inbjudning(ar)` + (fail ? `, misslyckades: ${fail}` : '');
       if (fail && firstError) {
@@ -139,6 +130,8 @@ export default function InviteScreen() {
     try {
       await createDbInvite(id, userId);
       Alert.alert('Inbjudan skickad', 'Notis skickas till användaren.');
+      // Reflect locally
+      addPendingInvites(id, [{ type: 'friend', userId }]);
       setQuery('');
     } catch (e) {
       Alert.alert('Något gick fel', 'Försök igen senare.');
@@ -148,13 +141,30 @@ export default function InviteScreen() {
   };
 
   const renderFriend = ({ item }: { item: SelectableFriend }) => {
-    const checked = !!selected[item.id];
+    const isAlreadyInvited = invitedFriendIds.has(item.id);
+    const checked = !isAlreadyInvited && !!selected[item.id];
     return (
-      <TouchableOpacity style={styles.friendRow} onPress={() => toggle(item.id)}>
-        <View style={[styles.checkbox, checked && styles.checkboxChecked]} />
+      <TouchableOpacity
+        style={styles.friendRow}
+        onPress={() => {
+          if (!isAlreadyInvited) toggle(item.id);
+        }}
+        disabled={isAlreadyInvited}
+      >
+        <View
+          style={[
+            styles.checkbox,
+            checked && styles.checkboxChecked,
+            isAlreadyInvited && styles.checkboxDisabled,
+          ]}
+        />
         <View style={styles.friendMain}>
-          <Text style={styles.friendName}>{item.name}</Text>
-          <Text style={styles.friendMeta}>@{item.username}</Text>
+          <Text style={[styles.friendName, isAlreadyInvited && styles.friendNameDisabled]}>
+            {item.name}
+          </Text>
+          <Text style={[styles.friendMeta, isAlreadyInvited && styles.friendMetaDisabled]}>
+            @{item.username}
+          </Text>
         </View>
       </TouchableOpacity>
     );
@@ -208,34 +218,6 @@ export default function InviteScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.divider} />
-      <Text style={styles.sectionTitle}>Pågående inbjudningar</Text>
-      {pending.length === 0 ? (
-        <Text style={styles.emptyPending}>Inga väntande inbjudningar.</Text>
-      ) : (
-        pending.map((inv) => (
-          <View key={inv.id} style={styles.pendingRow}>
-            <Text style={styles.pendingText}>
-              {inv.target.type === 'friend'
-                ? (() => {
-                    const prof = idToProfile[inv.target.userId];
-                    return prof ? `${prof.name} · @${prof.username}` : 'Vän';
-                  })()
-                : inv.target.type === 'email'
-                ? inv.target.email
-                : `@${inv.target.username}`}
-            </Text>
-            <View style={styles.pendingActions}>
-              <TouchableOpacity style={styles.declineBtn} onPress={() => declineInvite(inv.id)}>
-                <Text style={styles.declineBtnText}>Avböj</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.acceptBtn} onPress={() => acceptInvite(inv.id)}>
-                <Text style={styles.acceptBtnText}>Acceptera</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))
-      )}
     </View>
   );
 }
@@ -275,6 +257,10 @@ const styles = StyleSheet.create({
   checkboxChecked: {
     backgroundColor: '#2f7147',
   },
+  checkboxDisabled: {
+    borderColor: '#bdbdbd',
+    backgroundColor: '#e9e9e9',
+  },
   friendMain: {
     flex: 1,
   },
@@ -282,9 +268,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1f1f1f',
   },
+  friendNameDisabled: {
+    color: '#b0b0b0',
+  },
   friendMeta: {
     color: '#2a2a2a',
     fontSize: 12,
+  },
+  friendMetaDisabled: {
+    color: '#b0b0b0',
   },
   primaryBtn: {
     backgroundColor: '#2f7147',
@@ -347,9 +339,6 @@ const styles = StyleSheet.create({
   acceptBtnText: {
     color: '#fff',
     fontWeight: '700',
-  },
-  emptyPending: {
-    color: '#2a2a2a',
   },
 });
 

@@ -45,6 +45,36 @@ export function addPendingInvites(competitionId: string, targets: InviteTarget[]
   notify();
 }
 
+function setInvitesForCompetition(competitionId: string, next: Invite[]) {
+  // Keep invites for other competitions; replace for this one
+  invites = [...invites.filter((i) => i.competitionId !== competitionId), ...next];
+  notify();
+}
+
+export async function syncPendingInvitesForCompetition(competitionId: string): Promise<void> {
+  try {
+    const { data: me } = await supabase.auth.getUser();
+    const myId = me?.user?.id;
+    if (!myId) return;
+    const { data, error } = await supabase
+      .from('competition_invites')
+      .select('id, competition_id, invited_user_id, status, invited_by')
+      .eq('competition_id', competitionId)
+      .eq('invited_by', myId)
+      .eq('status', 'pending');
+    if (error) throw error;
+    const next: Invite[] = (data ?? []).map((row: any) => ({
+      id: row.id as string,
+      competitionId: row.competition_id as string,
+      target: { type: 'friend', userId: row.invited_user_id as string },
+      status: 'pending',
+    }));
+    setInvitesForCompetition(competitionId, next);
+  } catch {
+    // ignore errors; keep current local state
+  }
+}
+
 // For demo: accept an invite and add participant to the competition
 export function acceptInvite(inviteId: string) {
   const inv = invites.find((i) => i.id === inviteId);

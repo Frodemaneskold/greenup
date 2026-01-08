@@ -31,10 +31,6 @@ export default function LeaderboardListScreen() {
   }, []);
 
   const renderItem = ({ item }: { item: Competition }) => {
-    const participantNames =
-      item.participants && item.participants.length
-        ? item.participants.map((p) => p.name || '').filter(Boolean).join(', ')
-        : 'Inga deltagare ännu';
     return (
       <View style={styles.row}>
         <Link
@@ -48,7 +44,6 @@ export default function LeaderboardListScreen() {
             <View style={styles.rowMain}>
               <Text style={styles.title}>{item.name}</Text>
               {item.description ? <Text style={styles.subtitle}>{item.description}</Text> : null}
-              <Text style={styles.participantsText}>{participantNames}</Text>
             </View>
             <View style={styles.rowMeta}>
               <Text style={styles.meta}>{item.participants.length} deltagare</Text>
@@ -138,11 +133,6 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 2,
     color: '#3a3a3a',
-  },
-  participantsText: {
-    marginTop: 6,
-    color: '#1f1f1f',
-    fontSize: 12,
   },
   rowMeta: {
     flexDirection: 'row',

@@ -3,6 +3,14 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { getUserById } from '@/lib/users-store';
 import { supabase } from '@/src/lib/supabase';
+import { Image } from 'expo-image';
+import {
+  DEFAULT_PROFILE_BG,
+  PROFILE_BACKGROUNDS_PORTRAIT,
+  safeBackgroundKey,
+  type ProfileBackgroundKey,
+} from '@/src/constants/profileBackgrounds';
+import { useHeaderHeight } from '@react-navigation/elements';
 
 function weeksSince(dateIso: string): number {
   const created = new Date(dateIso).getTime();
@@ -11,13 +19,104 @@ function weeksSince(dateIso: string): number {
   return Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7));
 }
 
+function formatRankLabel(rank: number | null): string {
+  if (!rank || rank < 1 || !Number.isFinite(rank)) return '—';
+  if (rank <= 10) return `${rank}a`;
+  if (rank <= 50) return 'Top 50';
+  if (rank <= 100) return 'Top 100';
+  const bucket = Math.ceil(rank / 100) * 100;
+  return `Top ${bucket}`;
+}
+
 export default function FriendProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = typeof id === 'string' ? getUserById(id) : undefined;
   const [relationLabel, setRelationLabel] = useState('');
+  const [bgKey, setBgKey] = useState<ProfileBackgroundKey>(DEFAULT_PROFILE_BG);
+  const headerHeight = useHeaderHeight();
+  const extraTopSpacing = 24;
+  const [channelRef, setChannelRef] = useState<ReturnType<typeof supabase.channel> | null>(null);
+  const [rank, setRank] = useState<number | null>(null);
+  const [rankLabel, setRankLabel] = useState<string>('—');
+
+  async function refreshWorldRank(forUserId: string) {
+    try {
+      // Naive global ranking: sum all user_actions per user and compute index
+      const { data, error } = await supabase
+        .from('user_actions')
+        .select('user_id, co2_saved_kg');
+      if (error) {
+        setRank(null);
+        setRankLabel('—');
+        return;
+      }
+      const totals = new Map<string, number>();
+      for (const row of (data as any[]) ?? []) {
+        const uid = String((row as any).user_id ?? '');
+        const val = Number((row as any).co2_saved_kg ?? 0) || 0;
+        totals.set(uid, (totals.get(uid) ?? 0) + val);
+      }
+      const sorted = [...totals.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([uid]) => uid);
+      const idx = sorted.findIndex((uid) => uid === forUserId);
+      const position = idx >= 0 ? idx + 1 : null;
+      setRank(position);
+      setRankLabel(formatRankLabel(position));
+    } catch {
+      setRank(null);
+      setRankLabel('—');
+    }
+  }
+
   useEffect(() => {
     (async () => {
       if (typeof id !== 'string') return;
+      // Load friend's background key
+      try {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('background_key')
+          .eq('id', id)
+          .single();
+        const key: string | null | undefined = (prof as any)?.background_key;
+        setBgKey(safeBackgroundKey(key));
+      } catch {
+        setBgKey(DEFAULT_PROFILE_BG);
+      }
+      // Realtime for background/profile changes
+      try {
+        const ch = supabase
+          .channel('realtime:friend_profile:' + id)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${id}` },
+            (payload: any) => {
+              const key = (payload?.new as any)?.background_key ?? (payload?.old as any)?.background_key ?? null;
+              setBgKey(safeBackgroundKey(key));
+            }
+          )
+          .subscribe();
+        setChannelRef(ch);
+      } catch {
+        // ignore
+      }
+      // Compute and subscribe to world rank updates
+      await refreshWorldRank(id);
+      try {
+        const rankChannel = supabase
+          .channel('realtime:user_actions_global_rank:' + id)
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'user_actions' },
+            () => { void refreshWorldRank(id); }
+          )
+          .subscribe();
+        // Merge by just keeping one ref; cleanup will remove any active channel refs below
+        setChannelRef(rankChannel);
+      } catch {
+        // ignore
+      }
       const { data: me } = await supabase.auth.getUser();
       const myId = me?.user?.id;
       if (!myId) return;
@@ -36,22 +135,44 @@ export default function FriendProfileScreen() {
         setRelationLabel('');
       }
     })();
+    return () => {
+      if (channelRef) supabase.removeChannel(channelRef);
+    };
   }, [id]);
 
   if (!user) {
     return (
-      <View style={styles.container}>
-        <Stack.Screen options={{ title: 'Profil' }} />
+      <View style={[styles.container, { paddingTop: headerHeight + extraTopSpacing }]}>
+        <Stack.Screen
+          options={{
+            title: 'Profil',
+            headerTransparent: true,
+            headerStyle: { backgroundColor: 'transparent' },
+            headerShadowVisible: false,
+          }}
+        />
         <Text style={styles.missing}>Kunde inte hitta profilen.</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Stack.Screen options={{ title: 'Profil' }} />
+    <View style={[styles.container, { paddingTop: headerHeight + extraTopSpacing }]}>
+      {/* Full-screen background image (top-aligned cover) */}
+      <View style={styles.bgContainer} pointerEvents="none">
+        <Image source={PROFILE_BACKGROUNDS_PORTRAIT[bgKey]} style={styles.bgImage} contentFit="cover" contentPosition="top center" />
+        <View style={styles.bgOverlay} />
+      </View>
+      <Stack.Screen
+        options={{
+          title: 'Profil',
+          headerTransparent: true,
+          headerStyle: { backgroundColor: 'transparent' },
+          headerShadowVisible: false,
+        }}
+      />
 
-      <View style={styles.header}>
+      <View style={styles.profileHeader}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{user.name.charAt(0)}</Text>
         </View>
@@ -61,8 +182,8 @@ export default function FriendProfileScreen() {
 
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
-          <Text style={styles.statNumber}>{user.friendsCount ?? 0}</Text>
-          <Text style={styles.statLabel}>Vänner</Text>
+          <Text style={styles.statNumber}>{rankLabel}</Text>
+          <Text style={styles.statLabel}>Rank</Text>
         </View>
         <View style={styles.statBox}>
           <Text style={styles.statNumber}>{weeksSince(user.createdAt)}</Text>
@@ -74,9 +195,21 @@ export default function FriendProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#a7c7a3', padding: 16 },
+  container: { flex: 1, backgroundColor: '#a7c7a3', paddingHorizontal: 16 },
   missing: { color: '#1f1f1f' },
-  header: { alignItems: 'center', marginTop: 8, marginBottom: 16 },
+  bgContainer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgImage: {
+    width: '100%',
+    height: '100%',
+  },
+  bgOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#a7c7a3',
+    opacity: 0.2,
+  },
+  profileHeader: { alignItems: 'center', marginBottom: 54 },
   avatar: {
     width: 72,
     height: 72,
@@ -89,7 +222,7 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontWeight: '700', fontSize: 28 },
   name: { fontSize: 18, fontWeight: '700', color: '#1f1f1f' },
   username: { color: '#2a2a2a' },
-  statsRow: { flexDirection: 'row', gap: 12 },
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   statBox: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.92)',

@@ -1,3 +1,5 @@
+import type { ProfileBackgroundKey } from '@/src/constants/profileBackgrounds';
+
 export type User = {
   id: string;
   name: string;
@@ -6,6 +8,7 @@ export type User = {
   avatarUrl?: string;
   createdAt: string; // ISO date
   friendsCount?: number;
+  backgroundKey?: ProfileBackgroundKey;
 };
 
 let me: User = {
@@ -31,7 +34,7 @@ export function getCurrentUser(): User {
   return me;
 }
 
-export function updateCurrentUser(update: Partial<Pick<User, 'name' | 'username' | 'avatarUrl'>>) {
+export function updateCurrentUser(update: Partial<Pick<User, 'name' | 'username' | 'avatarUrl' | 'backgroundKey'>>) {
   me = { ...me, ...update };
   notify();
 }
