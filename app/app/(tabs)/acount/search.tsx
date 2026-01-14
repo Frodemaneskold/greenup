@@ -4,14 +4,13 @@ import { Stack } from 'expo-router';
 import { isValidEmail, isValidUsername } from '@/lib/users-store';
 import { supabase } from '@/src/lib/supabase';
 import {
-  acceptFriendRequest,
-  declineFriendRequest,
   getInboundPending,
   subscribeFriendRequests,
   addFriendRequest,
   hasAnyRelation,
   type FriendRequest,
 } from '@/lib/friend-requests-store';
+import { areFriends } from '@/lib/friendships';
 import { addFriend } from '@/lib/users-store';
 
 export default function SearchFriendScreen() {
@@ -134,6 +133,10 @@ export default function SearchFriendScreen() {
         Alert.alert('Ogiltigt', 'Du kan inte skicka en förfrågan till dig själv.');
         return;
       }
+      if (await areFriends(found.id)) {
+        Alert.alert('Redan vänner', 'Ni är redan vänner.');
+        return;
+      }
       if (hasAnyRelation(myId, found.id)) {
         Alert.alert('Redan skickad', 'Det finns redan en aktiv förfrågan mellan er.');
         return;
@@ -194,36 +197,15 @@ export default function SearchFriendScreen() {
                 accessibilityLabel="Acceptera"
                 style={styles.acceptBtn}
                 onPress={async () => {
-                  acceptFriendRequest(req.id);
-                  // lägg till avsändaren som vän lokalt (hämta profil för namn)
                   try {
-                    const { data: prof } = await supabase
-                      .from('profiles')
-                      .select('id, username, full_name, first_name, last_name, email')
-                      .eq('id', req.fromUserId)
-                      .single();
-                    const fullName =
-                      (prof as any)?.full_name ||
-                      ([ (prof as any)?.first_name, (prof as any)?.last_name ].filter(Boolean).join(' ')) ||
-                      username;
-                    addFriend({
-                      id: req.fromUserId,
-                      name: fullName,
-                      username: (prof as any)?.username ?? username,
-                      email: (prof as any)?.email ?? '',
-                      createdAt: new Date().toISOString().slice(0, 10),
+                    const { error } = await supabase.rpc('respond_friend_request', {
+                      p_friend_request_id: req.id,
+                      p_accept: true,
                     });
-                    Alert.alert('Vänner', `Du och @${(prof as any)?.username ?? username} är nu vänner.`);
-                  } catch {
-                    // fallback utan profil
-                    addFriend({
-                      id: req.fromUserId,
-                      name,
-                      username,
-                      email: '',
-                      createdAt: new Date().toISOString().slice(0, 10),
-                    });
-                    Alert.alert('Vänner', `Du och @${username} är nu vänner.`);
+                    if (error) throw new Error(error.message);
+                    Alert.alert('Klart', `Du och @${username} är nu vänner.`);
+                  } catch (e: any) {
+                    Alert.alert('Fel', e?.message ?? 'Kunde inte acceptera förfrågan.');
                   }
                 }}
               >
@@ -232,8 +214,16 @@ export default function SearchFriendScreen() {
               <TouchableOpacity
                 accessibilityLabel="Neka"
                 style={styles.declineBtn}
-                onPress={() => {
-                  declineFriendRequest(req.id);
+                onPress={async () => {
+                  try {
+                    const { error } = await supabase.rpc('respond_friend_request', {
+                      p_friend_request_id: req.id,
+                      p_accept: false,
+                    });
+                    if (error) throw new Error(error.message);
+                  } catch (e: any) {
+                    Alert.alert('Fel', e?.message ?? 'Kunde inte neka förfrågan.');
+                  }
                 }}
               >
                 <Text style={styles.declineText}>Neka</Text>

@@ -36,6 +36,51 @@ export async function markNotificationRead(id: string): Promise<void> {
   }
 }
 
+export async function createNotification(input: {
+  userId: string;
+  type: string;
+  title: string;
+  body?: string | null;
+  metadata?: Record<string, any> | null;
+}): Promise<NotificationRow> {
+  const { data, error } = await supabase
+    .from('notifications')
+    .insert({
+      user_id: input.userId,
+      type: input.type,
+      title: input.title,
+      body: input.body ?? null,
+      metadata: input.metadata ?? null,
+    } as any)
+    .select('id,user_id,type,title,body,metadata,read_at,created_at')
+    .single();
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data as unknown as NotificationRow;
+}
+
+export async function createFriendRequestNotification(args: {
+  toUserId: string;
+  friendRequestId: string;
+  from: { id: string; username: string; name: string };
+}) {
+  const title = 'Vänförfrågan';
+  const body = `${args.from.name} (@${args.from.username}) vill bli vän med dig.`;
+  return createNotification({
+    userId: args.toUserId,
+    type: 'friend_request',
+    title,
+    body,
+    metadata: {
+      friend_request_id: args.friendRequestId,
+      from_user_id: args.from.id,
+      from_username: args.from.username,
+      from_name: args.from.name,
+    },
+  });
+}
+
 export function subscribeToNotifications(onInsert: (row: NotificationRow) => void): () => void {
   let channel: ReturnType<typeof supabase.channel> | null = null;
   (async () => {

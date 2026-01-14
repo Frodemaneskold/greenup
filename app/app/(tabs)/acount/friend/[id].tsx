@@ -4,6 +4,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { getUserById } from '@/lib/users-store';
 import { supabase } from '@/src/lib/supabase';
 import { Image } from 'expo-image';
+import { areFriends } from '@/lib/friendships';
 import {
   DEFAULT_PROFILE_BG,
   PROFILE_BACKGROUNDS_PORTRAIT,
@@ -120,19 +121,27 @@ export default function FriendProfileScreen() {
       const { data: me } = await supabase.auth.getUser();
       const myId = me?.user?.id;
       if (!myId) return;
-      const { data: rels } = await supabase
-        .from('friend_requests')
-        .select('from_user_id, to_user_id, status, created_at')
-        .or(`and(from_user_id.eq.${myId},to_user_id.eq.${id}),and(from_user_id.eq.${id},to_user_id.eq.${myId})`)
-        .order('created_at', { ascending: false })
-        .limit(1);
-      const r = (rels ?? [])[0] as { from_user_id: string; to_user_id: string; status: string } | undefined;
-      if (r?.status === 'accepted') {
-        setRelationLabel(' • Vän');
-      } else if (r?.status === 'pending' && r.from_user_id === myId) {
-        setRelationLabel(' • Förfrågan skickad');
+      // 1) Check friendships
+      const friends = await areFriends(id);
+      if (friends) {
+        setRelationLabel(' • Vänner');
       } else {
-        setRelationLabel('');
+        // 2) Otherwise, see if there is a pending friend_request
+        const { data: pend } = await supabase
+          .from('friend_requests')
+          .select('from_user_id, to_user_id, status, created_at')
+          .eq('status', 'pending')
+          .or(`and(from_user_id.eq.${myId},to_user_id.eq.${id}),and(from_user_id.eq.${id},to_user_id.eq.${myId})`)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        const r = (pend ?? [])[0] as { from_user_id: string; to_user_id: string; status: string } | undefined;
+        if (r?.status === 'pending' && r.from_user_id === myId) {
+          setRelationLabel(' • Förfrågan skickad');
+        } else if (r?.status === 'pending' && r.to_user_id === myId) {
+          setRelationLabel(' • Förfrågan till dig');
+        } else {
+          setRelationLabel('');
+        }
       }
     })();
     return () => {

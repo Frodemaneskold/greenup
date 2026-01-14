@@ -4,7 +4,6 @@ import { StyleSheet, View, TouchableOpacity, Image } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -48,6 +47,7 @@ export default function TabLayout() {
           headerStyle: { backgroundColor: 'transparent' },
           headerTitleStyle: { color: '#1f1f1f' },
           headerTintColor: '#1f1f1f',
+          headerShadowVisible: false,
           headerRight: () => (
             <Link href="/notifications" asChild>
               <TouchableOpacity
@@ -61,7 +61,13 @@ export default function TabLayout() {
                   justifyContent: 'center',
                 }}
               >
-                <IconSymbol name="envelope.fill" size={20} color="#fff" />
+                <Image
+                  source={{
+                    uri: 'https://img.icons8.com/?size=100&id=5lr6xIUAwiha&format=png&color=000000',
+                  }}
+                  style={{ width: 20, height: 20 }}
+                  resizeMode="contain"
+                />
               </TouchableOpacity>
             </Link>
           ),

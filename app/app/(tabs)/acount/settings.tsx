@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { getCurrentUser, getFriends, isValidUsername, updateCurrentUser } from '@/lib/users-store';
 import { clearToken } from '@/lib/session';
@@ -84,7 +84,12 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ padding: 16, paddingBottom: 16 + insets.bottom + tabBarHeight }}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
       <Stack.Screen options={{ title: 'Profilinställningar' }} />
       <View style={styles.card}>
         <Text style={styles.label}>Namn</Text>
@@ -101,7 +106,6 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
       <Text style={styles.hint}>Profilbildsuppdatering kan läggas till senare.</Text>
-      <View style={{ flex: 1 }} />
       <TouchableOpacity
         accessibilityLabel="Logga ut"
         onPress={async () => {
@@ -113,7 +117,7 @@ export default function SettingsScreen() {
       >
         <Text style={styles.logoutText}>Logga ut</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -121,7 +125,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#a7c7a3',
-    padding: 16,
   },
   card: {
     backgroundColor: 'rgba(255,255,255,0.92)',

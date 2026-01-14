@@ -146,7 +146,7 @@ export default function CreateScreen() {
   return (
     <View style={styles.container}>
       <ImageBackground
-        source={require('@/assets/images/Vandring.png')}
+        source={require('@/assets/images/main_background/bg_skapa.jpeg')}
         resizeMode="cover"
         style={StyleSheet.absoluteFill}
       />

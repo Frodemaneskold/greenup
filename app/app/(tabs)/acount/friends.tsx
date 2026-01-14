@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native
 import { Link, Stack } from 'expo-router';
 import { type User } from '@/lib/users-store';
 import { supabase } from '@/src/lib/supabase';
+import { getMyFriendIds } from '@/lib/friendships';
 
 type FriendWithTotal = User & { totalCo2: number };
 
@@ -17,18 +18,8 @@ export default function FriendsScreen() {
       const myId = me?.user?.id;
       if (!myId) return;
       async function load() {
-        // Hämta accepterade relationer där jag är med
-        const { data: rels, error } = await supabase
-          .from('friend_requests')
-          .select('from_user_id, to_user_id, status')
-          .eq('status', 'accepted')
-          .or(`from_user_id.eq.${myId},to_user_id.eq.${myId}`);
-        if (error) return;
-        const otherIds = Array.from(
-          new Set(
-            (rels ?? []).map((r: any) => (r.from_user_id === myId ? r.to_user_id : r.from_user_id))
-          )
-        );
+        // Hämta vänners userIds via friendships
+        const otherIds = await getMyFriendIds();
         const { data: profs } = await supabase
           .from('profiles')
           .select('id, username, full_name, first_name, last_name, email')
@@ -65,17 +56,17 @@ export default function FriendsScreen() {
         setFriends(mapped.sort((a, b) => b.totalCo2 - a.totalCo2));
       }
       await load();
-      // Realtime: uppdatera när relationer ändras
+      // Realtime: uppdatera när friendships ändras
       channel = supabase
-        .channel('realtime:friends_list:' + myId)
+        .channel('realtime:friendships_list:' + myId)
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'friend_requests', filter: `to_user_id=eq.${myId}` },
+          { event: '*', schema: 'public', table: 'friendships', filter: `user_low=eq.${myId}` },
           load
         )
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'friend_requests', filter: `from_user_id=eq.${myId}` },
+          { event: '*', schema: 'public', table: 'friendships', filter: `user_high=eq.${myId}` },
           load
         )
         .subscribe();

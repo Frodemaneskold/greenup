@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Link, Stack, router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getCompetitions } from '@/lib/competitions-store';
-import { getCurrentUser, getFriends, subscribeUsers, setCurrentUser, type User } from '@/lib/users-store';
+import { getCurrentUser, subscribeUsers, setCurrentUser, type User } from '@/lib/users-store';
+import { getMyFriendIds } from '@/lib/friendships';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { isLoggedIn } from '@/lib/session';
@@ -15,7 +16,7 @@ import {
   safeBackgroundKey,
   type ProfileBackgroundKey,
 } from '@/src/constants/profileBackgrounds';
-import { subscribeFriendRequests } from '@/lib/friend-requests-store';
+// friend_requests is no longer used for friend counts/lists; we rely on public.friendships
 
 type FriendWithTotal = User & { totalCo2: number };
 
@@ -28,19 +29,7 @@ function formatRankLabel(rank: number | null): string {
   return `Top ${bucket}`;
 }
 
-function computeFriendTotals(): FriendWithTotal[] {
-  const comps = getCompetitions();
-  const friends = getFriends();
-  const totals: Record<string, number> = {};
-  for (const c of comps) {
-    for (const p of c.participants) {
-      totals[p.id] = (totals[p.id] ?? 0) + p.co2ReducedKg;
-    }
-  }
-  return friends
-    .map((f) => ({ ...f, totalCo2: totals[f.id] ?? 0 }))
-    .sort((a, b) => b.totalCo2 - a.totalCo2);
-}
+function computeFriendTotals(): FriendWithTotal[] { return []; }
 
 function computeMyRank(myId: string): number {
   const comps = getCompetitions();
@@ -74,8 +63,7 @@ export default function AccountScreen() {
 
   async function loadFriendTotalsFromSupabase() {
     try {
-      const base = getFriends();
-      const ids = base.map((f) => f.id);
+      const ids = await getMyFriendIds();
       if (ids.length === 0) {
         setFriends([]);
         return;
@@ -90,14 +78,29 @@ export default function AccountScreen() {
         const val = Number((row as any).co2_saved_kg ?? 0) || 0;
         totals.set(uid, (totals.get(uid) ?? 0) + val);
       }
-      const mapped: FriendWithTotal[] = base.map((f) => ({
-        ...f,
-        totalCo2: totals.get(f.id) ?? 0,
-      }));
+      // Fetch basic profile info for friend names/usernames
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, username, full_name, first_name, last_name, email')
+        .in('id', ids);
+      const mapped: FriendWithTotal[] = (profs as any[] ?? []).map((p) => {
+        const fullName =
+          p.full_name ||
+          [p.first_name, p.last_name].filter(Boolean).join(' ') ||
+          p.username ||
+          (p.email ?? 'user').split('@')[0];
+        return {
+          id: p.id,
+          name: fullName,
+          username: p.username ?? (p.email ?? 'user').split('@')[0],
+          email: p.email ?? '',
+          createdAt: new Date().toISOString().slice(0, 10),
+          totalCo2: totals.get(p.id as string) ?? 0,
+        } as FriendWithTotal;
+      });
       setFriends(mapped.sort((a, b) => b.totalCo2 - a.totalCo2));
     } catch {
-      // fallback to local competitions aggregate if Supabase call fails
-      setFriends(computeFriendTotals());
+      setFriends([]);
     }
   }
 
@@ -150,16 +153,14 @@ export default function AccountScreen() {
         try {
           const myId = user.id;
           const { data: rels } = await supabase
-            .from('friend_requests')
-            .select('from_user_id, to_user_id')
-            .eq('status', 'accepted')
-            .or(`from_user_id.eq.${myId},to_user_id.eq.${myId}`);
-          const otherIds = Array.from(
-            new Set(
-              (rels ?? []).map((r: any) => (r.from_user_id === myId ? r.to_user_id : r.from_user_id))
-            )
-          );
-          setFriendCount(otherIds.length);
+            .from('friendships')
+            .select('user_low,user_high')
+            .or(`user_low.eq.${myId},user_high.eq.${myId}`);
+          const ids = new Set<string>();
+          for (const r of (rels as any[]) ?? []) {
+            ids.add(r.user_low === myId ? r.user_high : r.user_low);
+          }
+          setFriendCount(ids.size);
         } catch {
           // ignore
         }
@@ -209,11 +210,6 @@ export default function AccountScreen() {
   }, []);
 
   useEffect(() => {
-    // Initiera vänförfrågningar för att populera lokala vänlistan (users-store)
-    const unsubscribeFriendReq = subscribeFriendRequests(() => {
-      // users-store uppdateras internt via addFriend(); AccountScreen lyssnar redan via subscribeUsers
-    });
-
     const unsub = subscribeUsers(() => {
       setMe(getCurrentUser());
       void loadFriendTotalsFromSupabase();
@@ -249,12 +245,12 @@ export default function AccountScreen() {
           .channel('realtime:friend_count:' + myId)
           .on(
             'postgres_changes',
-            { event: '*', schema: 'public', table: 'friend_requests', filter: `to_user_id=eq.${myId}` },
+            { event: '*', schema: 'public', table: 'friendships', filter: `user_low=eq.${myId}` },
             reloadCount
           )
           .on(
             'postgres_changes',
-            { event: '*', schema: 'public', table: 'friend_requests', filter: `from_user_id=eq.${myId}` },
+            { event: '*', schema: 'public', table: 'friendships', filter: `user_high=eq.${myId}` },
             reloadCount
           )
           .on(
@@ -290,7 +286,6 @@ export default function AccountScreen() {
     })();
     return () => {
       unsub();
-      unsubscribeFriendReq();
       if (channel) supabase.removeChannel(channel);
       if (channelRank) supabase.removeChannel(channelRank);
       if (channelFriendTotals) supabase.removeChannel(channelFriendTotals);
@@ -324,7 +319,12 @@ export default function AccountScreen() {
           headerRight: () => (
             <Link href="/(tabs)/acount/settings" asChild>
               <TouchableOpacity style={styles.headerBtn} accessibilityLabel="Profilinställningar">
-                <IconSymbol name="gearshape.fill" size={18} color="#fff" />
+                <Image
+                  source={{
+                    uri: 'https://img.icons8.com/?size=100&id=xyFoc6U1Hu3c&format=png&color=000000',
+                  }}
+                  style={{ width: 18, height: 18, tintColor: '#fff' }}
+                />
               </TouchableOpacity>
             </Link>
           ),

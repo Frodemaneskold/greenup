@@ -4,7 +4,7 @@ import { Link, Stack, useLocalSearchParams } from 'expo-router';
 import { getCompetitionById, subscribe, type Competition } from '@/lib/competitions-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Image } from 'expo-image';
 import { supabase } from '@/src/lib/supabase';
 import { fetchUserCo2SavedSince, fetchUserTotalCo2Saved } from '@/src/services/missions';
 
@@ -171,7 +171,10 @@ export default function CompetitionDetailScreen() {
             typeof id === 'string' ? (
               <Link href={{ pathname: '/(tabs)/leaderboard/competition/[id]/invite', params: { id } }} asChild>
                 <TouchableOpacity style={styles.headerBtnIcon} accessibilityLabel="Bjud in deltagare">
-                  <IconSymbol name="person.badge.plus" size={18} color="#fff" />
+                  <Image
+                    source={{ uri: 'https://img.icons8.com/?size=100&id=isUGx8n5CHFi&format=png&color=000000' }}
+                    style={{ width: 18, height: 18 }}
+                  />
                 </TouchableOpacity>
               </Link>
             ) : null,

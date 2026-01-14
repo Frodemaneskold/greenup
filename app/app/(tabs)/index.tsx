@@ -6,6 +6,7 @@ import { getCompetitions } from '@/lib/competitions-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/src/lib/supabase';
 import { fetchMyTotalCo2Saved, fetchAllUsersTotalCo2Saved, subscribeCo2TotalUpdated } from '@/src/services/missions';
+import GoalProgressCircle from '@/src/components/GoalProgressCircle';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -90,15 +91,25 @@ export default function HomeScreen() {
     <View style={styles.screen}>
       <HomeBg width="100%" height="100%" style={StyleSheet.absoluteFill} preserveAspectRatio="xMidYMid slice" />
       <View style={[styles.container, { paddingTop: insets.top + 56 }]}>
+        <Text style={styles.progressHeading}>GreenUP:s mål för januari</Text>
+        <View style={styles.progressWrap}>
+          <GoalProgressCircle size={175} strokeWidth={17.5} />
+        </View>
 
         <View style={styles.cards}>
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Din minskning</Text>
-            <Text style={styles.cardValue}>{((co2Saved ?? myTotal)).toFixed(1)} kg CO₂e</Text>
+            <Text style={styles.cardValue}>
+              <Text style={styles.cardValueNumber}>{((co2Saved ?? myTotal)).toFixed(1)}</Text>
+              <Text style={styles.cardValueUnit}> kg CO2</Text>
+            </Text>
           </View>
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Allas minskning</Text>
-            <Text style={styles.cardValue}>{((allSaved ?? allTotal)).toFixed(1)} kg CO₂e</Text>
+            <Text style={styles.cardValue}>
+              <Text style={styles.cardValueNumber}>{((allSaved ?? allTotal)).toFixed(1)}</Text>
+              <Text style={styles.cardValueUnit}> kg CO2</Text>
+            </Text>
           </View>
         </View>
 
@@ -131,13 +142,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cards: {
+    flexDirection: 'row',
     gap: 12,
     marginBottom: 24,
+  },
+  progressWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  progressHeading: {
+    alignSelf: 'center',
+    marginBottom: 10,
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1f1f1f',
   },
   card: {
     backgroundColor: 'rgba(255,255,255,0.92)',
     borderRadius: 12,
     padding: 16,
+    flex: 1,
+    minHeight: 130,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardLabel: {
     color: '#2a2a2a',
@@ -145,9 +173,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   cardValue: {
-    fontSize: 20,
-    fontWeight: '700',
     color: '#1f1f1f',
+  },
+  cardValueNumber: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: '#1f1f1f',
+  },
+  cardValueUnit: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(0,0,0,0.6)',
   },
   primaryBtn: {
     backgroundColor: '#2f7147',

@@ -1,5 +1,6 @@
 import { supabase } from '@/src/lib/supabase';
 import { addFriend, getFriends } from '@/lib/users-store';
+import { createFriendRequestNotification } from '@/src/services/notifications';
 
 export type FriendRequest = {
   id: string;
@@ -138,12 +139,35 @@ export async function addFriendRequest(req: { toUserId: string; fromUserId?: str
   const myId = me?.user?.id ?? req.fromUserId;
   if (!myId) throw new Error('Not signed in');
   if (myId === req.toUserId) throw new Error('Cannot request yourself');
-  const { error } = await supabase.from('friend_requests').insert({
+  // Create request and return the inserted row id
+  const { data: inserted, error } = await supabase.from('friend_requests').insert({
     from_user_id: myId,
     to_user_id: req.toUserId,
     status: 'pending',
-  } as any);
+  } as any).select('id').single();
   if (error) throw new Error(error.message);
+  const requestId = (inserted as any)?.id as string | undefined;
+  // Create a notification for the recipient
+  // Fetch minimal sender profile to include in notification body
+  const { data: prof } = await supabase
+    .from('profiles')
+    .select('id, username, full_name, first_name, last_name, email')
+    .eq('id', myId)
+    .single();
+  const name =
+    (prof as any)?.full_name ||
+    ([ (prof as any)?.first_name, (prof as any)?.last_name ].filter(Boolean).join(' ')) ||
+    (prof as any)?.username ||
+    ((prof as any)?.email ?? 'user').split('@')[0];
+  const username =
+    (prof as any)?.username || ((prof as any)?.email ?? 'user').split('@')[0];
+  if (requestId) {
+    await createFriendRequestNotification({
+      toUserId: req.toUserId,
+      friendRequestId: requestId,
+      from: { id: myId, username, name },
+    });
+  }
   await refreshForMe();
   notify();
 }

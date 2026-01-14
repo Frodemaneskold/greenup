@@ -172,3 +172,172 @@ set
 where lower(title) = 'panta burkar';
 
 
+-- === Notifications (for invites, friend requests, etc.) ===
+-- Table (idempotent)
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  type text not null,
+  title text not null,
+  body text,
+  metadata jsonb,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+-- Indexes
+create index if not exists idx_notifications_user_time on public.notifications (user_id, created_at desc);
+
+-- RLS
+alter table if exists public.notifications enable row level security;
+
+-- Policies
+create policy if not exists "notifications-select-own" on public.notifications
+for select using (auth.uid() = user_id);
+
+create policy if not exists "notifications-insert-own" on public.notifications
+for insert with check (auth.uid() = user_id);
+
+create policy if not exists "notifications-update-own" on public.notifications
+for update using (auth.uid() = user_id);
+
+-- Realtime for notifications
+-- (Enable in Supabase UI: Database > Replication > configure 'notifications' or run SQL as needed)
+
+-- === Friend requests RLS hardening (idempotent) ===
+-- Ensure table exists (skip if already there)
+create table if not exists public.friend_requests (
+  id uuid primary key default gen_random_uuid(),
+  from_user_id uuid not null references auth.users(id) on delete cascade,
+  to_user_id uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'pending',
+  responded_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table if exists public.friend_requests enable row level security;
+
+-- Allow both parties to read their requests
+create policy if not exists "friend_requests-select-parties" on public.friend_requests
+for select using (auth.uid() = from_user_id or auth.uid() = to_user_id);
+
+-- Allow sender to insert
+create policy if not exists "friend_requests-insert-sender" on public.friend_requests
+for insert with check (auth.uid() = from_user_id);
+
+-- Allow recipient to update status (accept/decline)
+create policy if not exists "friend_requests-update-recipient" on public.friend_requests
+for update using (auth.uid() = to_user_id);
+
+-- === Friendships table (idempotent) ===
+create table if not exists public.friendships (
+  user_low uuid not null,
+  user_high uuid not null,
+  created_at timestamptz not null default now(),
+  -- enforce ordering so (a,b) and (b,a) are treated the same
+  constraint friendships_user_order check (user_low < user_high),
+  constraint friendships_pkey primary key (user_low, user_high)
+);
+
+-- Ensure RLS allows participants to read their friendships
+alter table if exists public.friendships enable row level security;
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='friendships' and policyname='fships-select-parties'
+  ) then
+    create policy "fships-select-parties" on public.friendships
+      for select using (auth.uid() = user_low or auth.uid() = user_high);
+  end if;
+end
+$$;
+
+-- Optional: allow either party to delete their friendship (keep strict if you prefer RPC-only)
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='friendships' and policyname='fships-delete-parties'
+  ) then
+    create policy "fships-delete-parties" on public.friendships
+      for delete using (auth.uid() = user_low or auth.uid() = user_high);
+  end if;
+end
+$$;
+
+-- === Stored procedure to accept/decline a friend request ===
+create or replace function public.respond_friend_request(p_friend_request_id uuid, p_accept boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_req record;
+  v_caller uuid;
+  low uuid;
+  high uuid;
+begin
+  -- Fetch request and lock it to avoid races
+  select * into v_req from public.friend_requests where id = p_friend_request_id for update;
+  if not found then
+    raise exception 'friend_request % not found', p_friend_request_id;
+  end if;
+
+  -- Only the recipient may respond
+  select auth.uid() into v_caller;
+  if v_caller is null then
+    raise exception 'not authenticated';
+  end if;
+  if v_req.to_user_id is distinct from v_caller then
+    raise exception 'forbidden';
+  end if;
+
+  -- If already processed, do nothing (idempotent)
+  if v_req.status <> 'pending' then
+    return;
+  end if;
+
+  if p_accept then
+    -- order the pair deterministically
+    if v_req.from_user_id < v_req.to_user_id then
+      low := v_req.from_user_id;
+      high := v_req.to_user_id;
+    else
+      low := v_req.to_user_id;
+      high := v_req.from_user_id;
+    end if;
+    -- insert friendship idempotently (on conflict do nothing)
+    insert into public.friendships (user_low, user_high) values (low, high)
+      on conflict do nothing;
+    update public.friend_requests
+      set status = 'accepted', responded_at = now()
+      where id = p_friend_request_id;
+    -- try to notify sender, ignore errors
+    begin
+      insert into public.notifications (user_id, type, title, body, metadata)
+        values (v_req.from_user_id, 'friend_request_accepted',
+                'Vänförfrågan accepterad',
+                'Din vänförfrågan accepterades.',
+                jsonb_build_object('friend_request_id', p_friend_request_id, 'to_user_id', v_req.to_user_id));
+    exception when others then
+      -- ignore notification failure
+      null;
+    end;
+  else
+    update public.friend_requests
+      set status = 'declined', responded_at = now()
+      where id = p_friend_request_id;
+    -- optional notify sender about rejection (comment out if undesired)
+    begin
+      insert into public.notifications (user_id, type, title, body, metadata)
+        values (v_req.from_user_id, 'friend_request_rejected',
+                'Vänförfrågan nekad',
+                'Din vänförfrågan avslogs.',
+                jsonb_build_object('friend_request_id', p_friend_request_id, 'to_user_id', v_req.to_user_id));
+    exception when others then
+      null;
+    end;
+  end if;
+end;
+$$;
+

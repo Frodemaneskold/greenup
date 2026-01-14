@@ -20,7 +20,8 @@ export default function AccountStackLayout() {
     <Stack
       screenOptions={{
         headerShown: true,
-        headerStyle: { backgroundColor: '#a7c7a3' },
+        headerTransparent: true,
+        headerStyle: { backgroundColor: 'transparent' },
         headerTitleStyle: { color: '#1f1f1f' },
         headerTintColor: '#1f1f1f',
         headerShadowVisible: false,
