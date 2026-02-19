@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 14.0.0"
+    "version": ">= 14.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -20,8 +21,7 @@
       "autoIncrement": true,
       "ios": {
         "simulator": false,
-        "buildConfiguration": "Release",
-        "appleTeamId": "U7L2HGTZK7"
+        "buildConfiguration": "Release"
       }
     }
   },
@@ -29,7 +29,7 @@
     "production": {
       "ios": {
         "appleId": "frode.maneskold@outlook.com",
-        "ascAppId": "placeholder",
+        "ascAppId": "6759394701",
         "appleTeamId": "U7L2HGTZK7"
       }
     }

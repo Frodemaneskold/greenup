@@ -17,6 +17,7 @@ app/.env
 backend/data/*.db
 backend/data/*.sqlite
 backend/.cache/
+Backend/
 
 # Expo / Metro caches
 .expo/
