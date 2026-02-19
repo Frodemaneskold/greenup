@@ -3,6 +3,7 @@ import { FlatList, Pressable, StyleSheet, View, useWindowDimensions } from 'reac
 import { Image } from 'expo-image';
 import {
   PROFILE_BACKGROUNDS_THUMBS,
+  SELECTABLE_BACKGROUNDS,
   type ProfileBackgroundKey,
 } from '@/src/constants/profileBackgrounds';
 
@@ -26,8 +27,9 @@ export default function BackgroundPickerCarousel({ initialKey, onChange }: Props
     return Math.floor((width - totalPadding - totalGaps) / visible);
   }, [width]);
 
+  // Använd bara valbara bakgrunder (exkluderar exklusiva som bg_00)
   const data = useMemo<ProfileBackgroundKey[]>(
-    () => Object.keys(PROFILE_BACKGROUNDS_THUMBS) as ProfileBackgroundKey[],
+    () => [...SELECTABLE_BACKGROUNDS] as ProfileBackgroundKey[],
     []
   );
 

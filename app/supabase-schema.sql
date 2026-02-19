@@ -94,6 +94,28 @@ update public.profiles
 set background_key = 'bg_02'
 where background_key is null;
 
+-- Enable RLS on profiles
+alter table if exists public.profiles enable row level security;
+
+-- Profiles RLS Policies
+-- Policy 1: Users can see their own profile
+create policy if not exists "profiles-select-own" on public.profiles
+  for select using (auth.uid() = id);
+
+-- Policy 2: Friends can see each other's profiles
+create policy if not exists "profiles-select-friends" on public.profiles
+  for select using (
+    exists (
+      select 1 from public.friendships f
+      where (f.user_low = auth.uid() and f.user_high = public.profiles.id)
+         or (f.user_high = auth.uid() and f.user_low = public.profiles.id)
+    )
+  );
+
+-- Policy 3: Users can update their own profile
+create policy if not exists "profiles-update-own" on public.profiles
+  for update using (auth.uid() = id);
+
 -- Optional: constrain allowed values (bg_01..bg_07). Skip if already present.
 do $$
 begin
@@ -221,13 +243,17 @@ alter table if exists public.friend_requests enable row level security;
 create policy if not exists "friend_requests-select-parties" on public.friend_requests
 for select using (auth.uid() = from_user_id or auth.uid() = to_user_id);
 
--- Allow sender to insert
-create policy if not exists "friend_requests-insert-sender" on public.friend_requests
-for insert with check (auth.uid() = from_user_id);
+-- REMOVED: Allow sender to insert directly (use RPC send_friend_request instead)
+-- create policy if not exists "friend_requests-insert-sender" on public.friend_requests
+-- for insert with check (auth.uid() = from_user_id);
 
 -- Allow recipient to update status (accept/decline)
 create policy if not exists "friend_requests-update-recipient" on public.friend_requests
 for update using (auth.uid() = to_user_id);
+
+-- Allow recipient to delete request (when declining)
+create policy if not exists "friend_requests-delete-recipient" on public.friend_requests
+for delete using (auth.uid() = to_user_id);
 
 -- === Friendships table (idempotent) ===
 create table if not exists public.friendships (
@@ -264,6 +290,76 @@ begin
 end
 $$;
 
+-- === Stored procedure to send a friend request ===
+create or replace function public.send_friend_request(p_to_user_id uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller uuid;
+  v_request_id uuid;
+  v_sender_name text;
+  v_sender_username text;
+begin
+  -- Verify authenticated
+  select auth.uid() into v_caller;
+  if v_caller is null then
+    raise exception 'not authenticated';
+  end if;
+
+  -- Cannot request yourself
+  if v_caller = p_to_user_id then
+    raise exception 'cannot send friend request to yourself';
+  end if;
+
+  -- Create the friend request
+  insert into public.friend_requests (from_user_id, to_user_id, status)
+    values (v_caller, p_to_user_id, 'pending')
+    returning id into v_request_id;
+
+  -- Get sender's profile info for notification
+  select 
+    coalesce(
+      nullif(full_name, ''),
+      concat_ws(' ', nullif(first_name, ''), nullif(last_name, '')),
+      username,
+      split_part(email, '@', 1)
+    ),
+    coalesce(username, split_part(email, '@', 1))
+  into v_sender_name, v_sender_username
+  from public.profiles
+  where id = v_caller;
+
+  -- Create notification for recipient
+  begin
+    insert into public.notifications (user_id, type, title, body, metadata)
+      values (
+        p_to_user_id,
+        'friend_request',
+        'Vänförfrågan',
+        coalesce(v_sender_name, 'Någon') || ' (@' || coalesce(v_sender_username, 'okänd') || ') vill bli vän med dig.',
+        jsonb_build_object(
+          'friend_request_id', v_request_id,
+          'from_user_id', v_caller,
+          'from_username', v_sender_username,
+          'from_name', v_sender_name
+        )
+      );
+  exception when others then
+    -- ignore notification failure
+    null;
+  end;
+
+  return v_request_id;
+end;
+$$;
+
+-- Grant permissions
+grant execute on function public.send_friend_request(uuid) to authenticated;
+revoke all on function public.send_friend_request(uuid) from anon, public;
+
 -- === Stored procedure to accept/decline a friend request ===
 create or replace function public.respond_friend_request(p_friend_request_id uuid, p_accept boolean)
 returns void
@@ -276,6 +372,7 @@ declare
   v_caller uuid;
   low uuid;
   high uuid;
+  v_accepter_name text;
 begin
   -- Fetch request and lock it to avoid races
   select * into v_req from public.friend_requests where id = p_friend_request_id for update;
@@ -312,31 +409,33 @@ begin
     update public.friend_requests
       set status = 'accepted', responded_at = now()
       where id = p_friend_request_id;
+    
+    -- Get the name of the person who accepted the request
+    select coalesce(
+      nullif(full_name, ''),
+      concat_ws(' ', nullif(first_name, ''), nullif(last_name, '')),
+      username,
+      split_part(email, '@', 1),
+      'Någon'
+    ) into v_accepter_name
+    from public.profiles
+    where id = v_req.to_user_id;
+    
     -- try to notify sender, ignore errors
     begin
       insert into public.notifications (user_id, type, title, body, metadata)
         values (v_req.from_user_id, 'friend_request_accepted',
-                'Vänförfrågan accepterad',
-                'Din vänförfrågan accepterades.',
+                'Ny vän',
+                v_accepter_name || ' accepterade din vänförfrågan',
                 jsonb_build_object('friend_request_id', p_friend_request_id, 'to_user_id', v_req.to_user_id));
     exception when others then
       -- ignore notification failure
       null;
     end;
   else
-    update public.friend_requests
-      set status = 'declined', responded_at = now()
+    -- Delete the request entirely when declined (no notification sent)
+    delete from public.friend_requests
       where id = p_friend_request_id;
-    -- optional notify sender about rejection (comment out if undesired)
-    begin
-      insert into public.notifications (user_id, type, title, body, metadata)
-        values (v_req.from_user_id, 'friend_request_rejected',
-                'Vänförfrågan nekad',
-                'Din vänförfrågan avslogs.',
-                jsonb_build_object('friend_request_id', p_friend_request_id, 'to_user_id', v_req.to_user_id));
-    exception when others then
-      null;
-    end;
   end if;
 end;
 $$;

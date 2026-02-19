@@ -51,4 +51,9 @@ export function removeNotification(id: string) {
   notify();
 }
 
+export function resetNotificationsStore() {
+  notifications = [];
+  listeners.clear();
+}
+
 

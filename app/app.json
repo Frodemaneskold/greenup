@@ -6,14 +6,17 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "greenup",
-    "extra": {
-      "supabaseUrl": "https://oldyeaylxdnvfrzocobu.supabase.co",
-      "supabaseAnonKey": "sb_publishable_YC7cKRCzkXMqhL8tOh1vxg_1--ZPWVZ"
-    },
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.greenup.app",
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "GreenUp behöver åtkomst till ditt fotobibliotek för att du ska kunna dela bilder från dina miljövänliga aktiviteter.",
+        "NSCameraUsageDescription": "GreenUp behöver åtkomst till kameran för att du ska kunna ta bilder av dina miljövänliga aktiviteter.",
+        "NSLocationWhenInUseUsageDescription": "GreenUp använder din plats för att visa lokala aktiviteter och utmaningar i ditt område."
+      }
     },
     "android": {
       "adaptiveIcon": {

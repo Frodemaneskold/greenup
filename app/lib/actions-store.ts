@@ -73,4 +73,9 @@ export function incrementAction(actionId: string): number {
   return counts[key];
 }
 
+export function resetActionsStore() {
+  counts = {};
+  listeners.clear();
+}
+
 

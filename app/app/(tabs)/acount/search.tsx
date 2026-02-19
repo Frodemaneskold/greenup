@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ImageBackground } from 'react-native';
 import { Stack } from 'expo-router';
 import { isValidEmail, isValidUsername } from '@/lib/users-store';
 import { supabase } from '@/src/lib/supabase';
@@ -12,6 +12,7 @@ import {
 } from '@/lib/friend-requests-store';
 import { areFriends } from '@/lib/friendships';
 import { addFriend } from '@/lib/users-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SearchFriendScreen() {
   const [query, setQuery] = useState('');
@@ -20,6 +21,7 @@ export default function SearchFriendScreen() {
   const [senderById, setSenderById] = useState<Record<string, { name: string; username: string }>>({});
   const [searching, setSearching] = useState(false);
   const [found, setFound] = useState<null | { id: string; name: string; username: string }>(null);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -151,7 +153,12 @@ export default function SearchFriendScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 56, paddingBottom: insets.bottom }]}>
+      <ImageBackground 
+        source={require('@/assets/images/main_background/bg_friend.jpeg')}
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+      />
       <Stack.Screen options={{ title: 'Sök ny vän' }} />
       <View style={styles.card}>
         <Text style={styles.label}>Sök på användarnamn eller e‑post</Text>
@@ -237,7 +244,7 @@ export default function SearchFriendScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#a7c7a3', padding: 16 },
+  container: { flex: 1, backgroundColor: 'transparent', padding: 16 },
   card: {
     backgroundColor: 'rgba(255,255,255,0.92)',
     borderRadius: 12,

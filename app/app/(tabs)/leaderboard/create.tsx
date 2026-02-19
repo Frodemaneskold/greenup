@@ -15,6 +15,7 @@ export default function CreateCompetitionScreen() {
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<'start' | 'end'>('start');
+  const [invitePolicy, setInvitePolicy] = useState<'owner_only' | 'all_members'>('owner_only');
 
   function formatYmd(d: Date | null): string {
     if (!d) return '';
@@ -103,6 +104,7 @@ export default function CreateCompetitionScreen() {
         description: description.trim() || undefined,
         startDate: startDate ? formatYmd(startDate) : undefined,
         endDate: endDate ? formatYmd(endDate) : undefined,
+        invitePolicy,
       });
       Alert.alert('Tävling skapad', 'Inbjudningslänk har kopierats.');
       router.replace({
@@ -164,6 +166,26 @@ export default function CreateCompetitionScreen() {
             {endDate ? formatYmd(endDate) : 'Välj slutdatum'}
           </Text>
         </TouchableOpacity>
+
+        <Text style={styles.label}>Vem kan bjuda in?</Text>
+        <View style={styles.segmentedControl}>
+          <TouchableOpacity
+            style={[styles.segmentButton, invitePolicy === 'owner_only' && styles.segmentButtonActive]}
+            onPress={() => setInvitePolicy('owner_only')}
+          >
+            <Text style={[styles.segmentText, invitePolicy === 'owner_only' && styles.segmentTextActive]}>
+              Bara ägare
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.segmentButton, invitePolicy === 'all_members' && styles.segmentButtonActive]}
+            onPress={() => setInvitePolicy('all_members')}
+          >
+            <Text style={[styles.segmentText, invitePolicy === 'all_members' && styles.segmentTextActive]}>
+              Alla deltagare
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity onPress={onCreate} style={styles.button}>
           <Text style={styles.buttonText}>Skapa privat tävling</Text>
@@ -305,6 +327,32 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 12,
     color: '#1f1f1f',
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e1e1e1',
+    overflow: 'hidden',
+  },
+  segmentButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+  },
+  segmentButtonActive: {
+    backgroundColor: '#2f7147',
+  },
+  segmentText: {
+    fontWeight: '600',
+    color: '#1f1f1f',
+  },
+  segmentTextActive: {
+    color: '#ffffff',
   },
 });
 

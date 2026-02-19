@@ -31,7 +31,12 @@ function formatRankLabel(rank: number | null): string {
 
 export default function FriendProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const user = typeof id === 'string' ? getUserById(id) : undefined;
+  const userFromStore = typeof id === 'string' ? getUserById(id) : undefined;
+  
+  // State för att hålla användarprofil (från store eller Supabase)
+  const [user, setUser] = useState<any>(userFromStore);
+  const [isLoading, setIsLoading] = useState(!userFromStore);
+  
   const [relationLabel, setRelationLabel] = useState('');
   const [bgKey, setBgKey] = useState<ProfileBackgroundKey>(DEFAULT_PROFILE_BG);
   const headerHeight = useHeaderHeight();
@@ -73,6 +78,59 @@ export default function FriendProfileScreen() {
   useEffect(() => {
     (async () => {
       if (typeof id !== 'string') return;
+      
+      // Om användaren inte finns i store, ladda från Supabase
+      if (!userFromStore) {
+        try {
+          const { data: prof, error } = await supabase
+            .from('profiles')
+            .select('id, username, email, created_at, background_key, full_name, first_name, last_name')
+            .eq('id', id)
+            .single();
+          
+          if (error || !prof) {
+            console.error('Fel vid laddning av profil:', error);
+            setIsLoading(false);
+            return;
+          }
+          
+          // Bygg displaynamn från profilen (prioritera full_name, sedan first/last, sedan username)
+          const fullName = (prof as any).full_name || '';
+          const firstName = (prof as any).first_name || '';
+          const lastName = (prof as any).last_name || '';
+          const displayName = fullName || 
+                             [firstName, lastName].filter(Boolean).join(' ') || 
+                             (prof as any).username || 
+                             (prof as any).email?.split('@')[0] || 
+                             'Användare';
+          
+          // Skapa ett användarobjekt
+          const loadedUser = {
+            id: (prof as any).id,
+            name: displayName,
+            username: (prof as any).username || 'user',
+            email: (prof as any).email || '',
+            createdAt: (prof as any).created_at || new Date().toISOString(),
+            friendsCount: 0,
+            backgroundKey: (prof as any).background_key,
+          };
+          
+          setUser(loadedUser);
+          setIsLoading(false);
+          
+          // Sätt även background key
+          setBgKey(safeBackgroundKey((prof as any).background_key));
+        } catch (err) {
+          console.error('Fel vid laddning av profil:', err);
+          setIsLoading(false);
+          return;
+        }
+      } else {
+        // Användaren finns redan i store
+        setUser(userFromStore);
+        setIsLoading(false);
+      }
+      
       // Load friend's background key
       try {
         const { data: prof } = await supabase
@@ -148,6 +206,22 @@ export default function FriendProfileScreen() {
       if (channelRef) supabase.removeChannel(channelRef);
     };
   }, [id]);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { paddingTop: headerHeight + extraTopSpacing }]}>
+        <Stack.Screen
+          options={{
+            title: 'Profil',
+            headerTransparent: true,
+            headerStyle: { backgroundColor: 'transparent' },
+            headerShadowVisible: false,
+          }}
+        />
+        <Text style={styles.missing}>Laddar profil...</Text>
+      </View>
+    );
+  }
 
   if (!user) {
     return (

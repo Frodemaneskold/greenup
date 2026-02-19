@@ -26,11 +26,40 @@ export async function fetchNotifications(): Promise<NotificationRow[]> {
   return (data ?? []) as unknown as NotificationRow[];
 }
 
+export async function fetchUnreadCount(): Promise<number> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
+    return 0;
+  }
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .is('read_at', null);
+  if (error) {
+    return 0;
+  }
+  return count ?? 0;
+}
+
 export async function markNotificationRead(id: string): Promise<void> {
   const { error } = await supabase
     .from('notifications')
     .update({ read_at: new Date().toISOString() } as any)
     .eq('id', id);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
+    return;
+  }
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read_at: new Date().toISOString() } as any)
+    .is('read_at', null);
   if (error) {
     throw new Error(error.message);
   }

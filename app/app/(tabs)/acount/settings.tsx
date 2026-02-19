@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { getCurrentUser, getFriends, isValidUsername, updateCurrentUser } from '@/lib/users-store';
-import { clearToken } from '@/lib/session';
+import { logout } from '@/lib/session';
 import { supabase } from '@/src/lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -86,7 +86,11 @@ export default function SettingsScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={{ padding: 16, paddingBottom: 16 + insets.bottom + tabBarHeight }}
+      contentContainerStyle={{
+        padding: 16,
+        paddingTop: insets.top + 56,
+        paddingBottom: 16 + insets.bottom + tabBarHeight,
+      }}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
@@ -109,8 +113,7 @@ export default function SettingsScreen() {
       <TouchableOpacity
         accessibilityLabel="Logga ut"
         onPress={async () => {
-          await supabase.auth.signOut();
-          await clearToken();
+          await logout();
           router.replace('/login');
         }}
         style={[styles.logoutBtn, { marginBottom: 4 + tabBarHeight }]}

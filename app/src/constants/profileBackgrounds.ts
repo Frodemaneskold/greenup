@@ -1,6 +1,8 @@
 export const DEFAULT_PROFILE_BG = 'bg_02' as const;
 
+// Alla tillgängliga bakgrunder (inklusive exklusiva som bg_00)
 export const PROFILE_BACKGROUNDS_PORTRAIT = {
+  bg_00: require('../../assets/images/profile-backgrounds/portrait/bg_00.jpeg'), // Exklusiv bakgrund
   bg_01: require('../../assets/images/profile-backgrounds/portrait/bg_01.jpeg'),
   bg_02: require('../../assets/images/profile-backgrounds/portrait/bg_02.jpeg'),
   bg_03: require('../../assets/images/profile-backgrounds/portrait/bg_03.jpeg'),
@@ -11,6 +13,7 @@ export const PROFILE_BACKGROUNDS_PORTRAIT = {
 } as const;
 
 export const PROFILE_BACKGROUNDS_THUMBS = {
+  bg_00: require('../../assets/images/profile-backgrounds/thumbs/bg_01.png'), // Använder bg_01 som placeholder tills bg_00.png finns
   bg_01: require('../../assets/images/profile-backgrounds/thumbs/bg_01.png'),
   bg_02: require('../../assets/images/profile-backgrounds/thumbs/bg_02.png'),
   bg_03: require('../../assets/images/profile-backgrounds/thumbs/bg_03.png'),
@@ -20,7 +23,20 @@ export const PROFILE_BACKGROUNDS_THUMBS = {
   bg_07: require('../../assets/images/profile-backgrounds/thumbs/bg_07.png'),
 } as const;
 
+// Bakgrunder som visas i profil-pickern (EXKLUDERAR bg_00)
+// bg_00 är en exklusiv bakgrund som bara kan sättas manuellt i databasen
+export const SELECTABLE_BACKGROUNDS = [
+  'bg_01',
+  'bg_02',
+  'bg_03',
+  'bg_04',
+  'bg_05',
+  'bg_06',
+  'bg_07',
+] as const;
+
 export type ProfileBackgroundKey = keyof typeof PROFILE_BACKGROUNDS_PORTRAIT;
+export type SelectableBackgroundKey = typeof SELECTABLE_BACKGROUNDS[number];
 
 export function safeBackgroundKey(key: string | null | undefined): ProfileBackgroundKey {
   if (!key) return DEFAULT_PROFILE_BG;

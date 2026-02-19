@@ -1,11 +1,16 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ImageBackground } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function InfoScreen() {
   const insets = useSafeAreaInsets();
   return (
     <View style={styles.container}>
+      <ImageBackground 
+        source={require('@/assets/images/main_background/bg_info.jpeg')}
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+      />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 56, paddingBottom: 24 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
@@ -50,7 +55,7 @@ export default function InfoScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#a7c7a3',
+    backgroundColor: 'transparent',
   },
   content: {
     paddingHorizontal: 16,

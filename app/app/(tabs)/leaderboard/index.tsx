@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { Stack, Link } from 'expo-router';
-import { Image } from 'expo-image';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { getCompetitions, subscribe, loadCompetitionsFromSupabase } from '@/lib/competitions-store';
 import type { Competition } from '@/lib/competitions-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -64,10 +64,7 @@ export default function LeaderboardListScreen() {
           headerRight: () => (
             <Link href="/(tabs)/leaderboard/create" asChild>
               <TouchableOpacity style={styles.headerBtn}>
-                <Image
-                  source={{ uri: 'https://img.icons8.com/?size=100&id=1OvPrBUWbMke&format=png&color=000000' }}
-                  style={{ width: 20, height: 20 }}
-                />
+                <FontAwesome6 name="plus" size={18} color="#fff" />
               </TouchableOpacity>
             </Link>
           ),

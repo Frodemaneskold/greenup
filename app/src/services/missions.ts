@@ -190,4 +190,8 @@ function notifyCo2TotalUpdated() {
   co2Listeners.forEach((l) => l());
 }
 
+export function resetMissionsStore() {
+  co2Listeners.clear();
+}
+
 

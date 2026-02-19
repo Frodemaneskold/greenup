@@ -4,11 +4,15 @@ import { Link, Stack } from 'expo-router';
 import { type User } from '@/lib/users-store';
 import { supabase } from '@/src/lib/supabase';
 import { getMyFriendIds } from '@/lib/friendships';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 type FriendWithTotal = User & { totalCo2: number };
 
 export default function FriendsScreen() {
   const [friends, setFriends] = useState<FriendWithTotal[]>([]);
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -87,7 +91,7 @@ export default function FriendsScreen() {
   }, []);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 56 }]}>
       <Stack.Screen options={{ title: 'Vänner' }} />
       <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
         {friends.length > 0 ? (
@@ -115,7 +119,10 @@ export default function FriendsScreen() {
             </TouchableOpacity>
           </Link>
         )}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: 16 + insets.bottom + tabBarHeight },
+        ]}
       />
     </View>
   );

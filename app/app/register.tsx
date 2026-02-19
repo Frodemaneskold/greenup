@@ -4,6 +4,7 @@ import { Stack, router } from 'expo-router';
 import { supabase } from '@/src/lib/supabase';
 import { setToken } from '@/lib/session';
 import { updateCurrentUser } from '@/lib/users-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function RegisterScreen() {
   const [firstName, setFirstName] = useState('');
@@ -12,6 +13,7 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const onSubmit = async () => {
     try {
@@ -184,7 +186,7 @@ export default function RegisterScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 56, paddingBottom: 16 + insets.bottom }]}>
       <Stack.Screen options={{ title: 'Skapa konto' }} />
       <View style={styles.card}>
         <Text style={styles.label}>Förnamn</Text>

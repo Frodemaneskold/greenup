@@ -1,34 +1,43 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
-import { Link, Stack, useLocalSearchParams } from 'expo-router';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Modal, Alert } from 'react-native';
+import { Link, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getCompetitionById, subscribe, type Competition } from '@/lib/competitions-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { Image } from 'expo-image';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { supabase } from '@/src/lib/supabase';
 import { fetchUserCo2SavedSince, fetchUserTotalCo2Saved } from '@/src/services/missions';
 
-let currentUserId: string | null = null;
-async function ensureCurrentUserId() {
-  if (currentUserId) return currentUserId;
+// Hämta alltid aktuell användar-ID friskt från Supabase för att undvika caching-problem
+async function getCurrentUserId(): Promise<string | null> {
   try {
     const { data } = await supabase.auth.getUser();
-    currentUserId = data?.user?.id ?? null;
+    return data?.user?.id ?? null;
   } catch {
-    currentUserId = null;
+    return null;
   }
-  return currentUserId;
 }
 
 export default function CompetitionDetailScreen() {
+  const router = useRouter();
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
   const [competition, setCompetition] = useState<Competition | undefined>(() =>
     id ? getCompetitionById(id) : undefined
   );
   const [refreshing, setRefreshing] = useState(false);
   const [entries, setEntries] = useState<Array<{ id: string; name: string; username?: string; co2ReducedKg: number }>>([]);
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const [canInvite, setCanInvite] = useState<boolean | null>(null);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [invitePolicy, setInvitePolicy] = useState<'owner_only' | 'all_members'>('owner_only');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  
+  // Hämta aktuell användar-ID när komponenten laddas
+  useEffect(() => {
+    getCurrentUserId().then(setCurrentUserId);
+  }, []);
 
   useEffect(() => {
     const unsub = subscribe(() => {
@@ -43,19 +52,28 @@ export default function CompetitionDetailScreen() {
   async function loadLeaderboard() {
     if (typeof id !== 'string') return;
     try {
-      await ensureCurrentUserId();
-      // Fetch competition (for start date)
+      // Hämta alltid aktuell användar-ID friskt
+      const userId = await getCurrentUserId();
+      setCurrentUserId(userId);
+      
+      // Fetch competition (for start date, owner_id, invite_policy)
       const { data: compRow } = await supabase
         .from('competitions')
-        .select('id,name,start_date')
+        .select('id,name,start_date,owner_id,invite_policy')
         .eq('id', id)
         .single();
       const startDate: string | undefined = (compRow as any)?.start_date ?? competition?.startDate;
-      // Fetch participants from Supabase (authoritative)
+      const fetchedOwnerId: string | null = (compRow as any)?.owner_id ?? null;
+      const fetchedInvitePolicy: 'owner_only' | 'all_members' = (compRow as any)?.invite_policy ?? 'owner_only';
+      
+      setOwnerId(fetchedOwnerId);
+      setInvitePolicy(fetchedInvitePolicy);
+      // Fetch participants from Supabase (authoritative) - only active participants (not left)
       const { data: parts } = await supabase
         .from('competition_participants')
         .select('user_id')
-        .eq('competition_id', id);
+        .eq('competition_id', id)
+        .is('left_at', null);
       const userIds = ((parts as any[]) ?? []).map((p) => p.user_id as string);
       if (userIds.length === 0) {
         setEntries([]);
@@ -94,8 +112,27 @@ export default function CompetitionDetailScreen() {
         })
       );
       setEntries(values);
+      
+      // Determine if current user can invite
+      if (userId && fetchedOwnerId) {
+        const isActiveParticipant = userIds.includes(userId);
+        if (!isActiveParticipant) {
+          setCanInvite(false);
+        } else if (fetchedInvitePolicy === 'owner_only') {
+          // Only owner can see invite button when policy is owner_only
+          setCanInvite(userId === fetchedOwnerId);
+        } else if (fetchedInvitePolicy === 'all_members') {
+          // All participants can see invite button when policy is all_members
+          setCanInvite(true);
+        } else {
+          setCanInvite(false);
+        }
+      } else {
+        setCanInvite(false);
+      }
     } catch {
       // ignore
+      setCanInvite(false);
     }
   }
 
@@ -142,7 +179,7 @@ export default function CompetitionDetailScreen() {
     return [...entries].sort((a, b) => b.co2ReducedKg - a.co2ReducedKg);
   }, [entries]);
 
-  const renderItem = ({ item, index }: { item: NonNullable<Competition>['participants'][number]; index: number }) => {
+  const renderItem = ({ item, index }: { item: { id: string; name: string; username?: string; co2ReducedKg: number }; index: number }) => {
     const isMe = item.id === currentUserId;
     return (
       <View style={[styles.row, isMe && styles.meRow]}>
@@ -161,22 +198,58 @@ export default function CompetitionDetailScreen() {
     );
   };
 
+  const handleLeaveCompetition = async () => {
+    if (!currentUserId || typeof id !== 'string') return;
+    Alert.alert(
+      'Lämna tävling',
+      'Är du säker på att du vill lämna denna tävling?',
+      [
+        { text: 'Avbryt', style: 'cancel' },
+        {
+          text: 'Lämna',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await supabase
+                .from('competition_participants')
+                .update({ left_at: new Date().toISOString() })
+                .eq('competition_id', id)
+                .eq('user_id', currentUserId);
+              setShowActionsMenu(false);
+              router.back();
+            } catch (e: any) {
+              Alert.alert('Fel', e?.message || 'Kunde inte lämna tävlingen.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleInvitePress = () => {
+    setShowActionsMenu(false);
+    if (typeof id === 'string') {
+      router.push({
+        pathname: '/(tabs)/leaderboard/competition/[id]/invite' as any,
+        params: { id },
+      });
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Stack.Screen
         options={{
           title: (typeof name === 'string' && name) ? name : competition?.name ?? `Tävling #${id || ''}`,
-          headerRightContainerStyle: { marginRight: 0, paddingRight: 0 },
           headerRight: () =>
             typeof id === 'string' ? (
-              <Link href={{ pathname: '/(tabs)/leaderboard/competition/[id]/invite', params: { id } }} asChild>
-                <TouchableOpacity style={styles.headerBtnIcon} accessibilityLabel="Bjud in deltagare">
-                  <Image
-                    source={{ uri: 'https://img.icons8.com/?size=100&id=isUGx8n5CHFi&format=png&color=000000' }}
-                    style={{ width: 18, height: 18 }}
-                  />
-                </TouchableOpacity>
-              </Link>
+              <TouchableOpacity
+                style={styles.headerBtnIcon}
+                accessibilityLabel="Fler åtgärder"
+                onPress={() => setShowActionsMenu(true)}
+              >
+                <FontAwesome6 name="ellipsis-vertical" size={20} color="#fff" />
+              </TouchableOpacity>
             ) : null,
         }}
       />
@@ -200,6 +273,33 @@ export default function CompetitionDetailScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         />
       )}
+
+      <Modal
+        visible={showActionsMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowActionsMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowActionsMenu(false)}
+        >
+          <View style={styles.actionsMenu}>
+            {canInvite === true && (
+              <TouchableOpacity style={styles.actionItem} onPress={handleInvitePress}>
+                <Text style={styles.actionText}>Bjud in</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.actionItem} onPress={handleLeaveCompetition}>
+              <Text style={[styles.actionText, styles.actionTextDestructive]}>Lämna tävling</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionItem} onPress={() => setShowActionsMenu(false)}>
+              <Text style={styles.actionText}>Avbryt</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -260,6 +360,11 @@ const styles = StyleSheet.create({
   meName: {
     textDecorationLine: 'underline',
   },
+  usernameText: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
   points: {
     fontWeight: '600',
     color: '#1f1f1f',
@@ -285,6 +390,33 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: '#2a2a2a',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  actionsMenu: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 32,
+    paddingTop: 8,
+  },
+  actionItem: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  actionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f1f1f',
+    textAlign: 'center',
+  },
+  actionTextDestructive: {
+    color: '#dc2626',
   },
 });
 

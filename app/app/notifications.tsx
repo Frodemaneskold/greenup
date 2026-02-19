@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, RefreshControl, Image } from 'react-native';
-import { Stack } from 'expo-router';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, RefreshControl, ImageBackground } from 'react-native';
+import { Stack, useFocusEffect } from 'expo-router';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { supabase } from '@/src/lib/supabase';
-import { fetchNotifications, markNotificationRead, subscribeToNotifications, type NotificationRow } from '@/src/services/notifications';
+import { fetchNotifications, markNotificationRead, markAllNotificationsRead, subscribeToNotifications, type NotificationRow } from '@/src/services/notifications';
 import { acceptInvite as acceptDbInvite, declineInvite as declineDbInvite } from '@/src/services/invites';
 import { loadCompetitionsFromSupabase } from '@/lib/competitions-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function NotificationsScreen() {
   const [items, setItems] = useState<NotificationRow[]>([]);
@@ -12,12 +14,13 @@ export default function NotificationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loggedIn, setLoggedIn] = useState<boolean>(false);
   const [profileCache, setProfileCache] = useState<Record<string, { name: string; username: string }>>({});
+  const insets = useSafeAreaInsets();
 
   const typeIconMap = useMemo<Record<string, string>>(
     () => ({
-      competition_invite: 'https://img.icons8.com/?size=100&id=eo4RH9bVDxml&format=png&color=000000',
-      friend_request: 'https://img.icons8.com/?size=100&id=isUGx8n5CHFi&format=png&color=000000',
-      friend_request_accepted: 'https://img.icons8.com/?size=100&id=S9XHvhz4Fz4d&format=png&color=000000',
+      competition_invite: 'envelope',
+      friend_request: 'user-plus',
+      friend_request_accepted: 'user-check',
     }),
     []
   );
@@ -129,9 +132,38 @@ export default function NotificationsScreen() {
     })();
   }, [loggedIn]);
 
+  // Markera alla olästa notiser som lästa när sidan får fokus
+  useFocusEffect(
+    useCallback(() => {
+      if (!loggedIn || items.length === 0) return;
+      
+      const unreadItems = items.filter((item) => !item.read_at);
+      if (unreadItems.length === 0) return;
+
+      (async () => {
+        try {
+          await markAllNotificationsRead();
+          // Uppdatera lokalt state för att visa alla som lästa
+          setItems((prev) => prev.map((item) => ({
+            ...item,
+            read_at: item.read_at ?? new Date().toISOString(),
+          })));
+        } catch (e: any) {
+          // Ignorera fel tyst - viktigt att inte störa användarupplevelsen
+          console.error('Kunde inte markera notiser som lästa:', e);
+        }
+      })();
+    }, [loggedIn, items])
+  );
+
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ title: 'Notiser' }} />
+      <ImageBackground 
+        source={require('@/assets/images/main_background/bg_notification.jpeg')}
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+      />
+      <Stack.Screen options={{ title: 'Notiser', headerBackTitle: 'Hem' }} />
       {!loggedIn ? (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyText}>Logga in för att se notiser.</Text>
@@ -148,7 +180,13 @@ export default function NotificationsScreen() {
         <FlatList
           data={items}
           keyExtractor={(n) => n.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            {
+              paddingTop: insets.top + 56,
+              paddingBottom: 24 + insets.bottom,
+            },
+          ]}
           renderItem={({ item }) => {
             const unread = !item.read_at;
             const createdRel = formatTimeAgo(item.created_at);
@@ -271,7 +309,7 @@ export default function NotificationsScreen() {
               >
                 <View style={styles.badge}>
                   {typeIconMap[item.type] ? (
-                    <Image source={{ uri: typeIconMap[item.type] }} style={styles.badgeIcon} resizeMode="contain" />
+                    <FontAwesome6 name={typeIconMap[item.type] as any} size={18} color="#fff" />
                   ) : (
                     <Text style={styles.badgeText}>
                       {item.type}
@@ -305,7 +343,7 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#a7c7a3' },
+  container: { flex: 1, backgroundColor: 'transparent' },
   listContent: { padding: 16 },
   row: {
     flexDirection: 'row',

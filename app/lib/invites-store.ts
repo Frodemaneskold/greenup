@@ -58,9 +58,9 @@ export async function syncPendingInvitesForCompetition(competitionId: string): P
     if (!myId) return;
     const { data, error } = await supabase
       .from('competition_invites')
-      .select('id, competition_id, invited_user_id, status, invited_by')
+      .select('id, competition_id, invited_user_id, status, invited_by_user_id')
       .eq('competition_id', competitionId)
-      .eq('invited_by', myId)
+      .eq('invited_by_user_id', myId)
       .eq('status', 'pending');
     if (error) throw error;
     const next: Invite[] = (data ?? []).map((row: any) => ({
@@ -167,6 +167,11 @@ export function declineInvite(inviteId: string) {
   if (inv.status !== 'pending') return;
   inv.status = 'declined';
   notify();
+}
+
+export function resetInvitesStore() {
+  invites = [];
+  listeners.clear();
 }
 
 

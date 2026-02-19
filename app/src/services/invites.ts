@@ -4,26 +4,25 @@ export type CompetitionInvite = {
   id: string;
   competition_id: string;
   invited_user_id: string;
-  invited_by: string;
+  invited_by_user_id: string;
   status: 'pending' | 'accepted' | 'declined';
   created_at: string;
   responded_at: string | null;
 };
 
-export async function createInvite(competitionId: string, invitedUserId: string): Promise<CompetitionInvite> {
+export async function createInvite(competitionId: string, invitedUserId: string): Promise<void> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user?.id) {
     throw new Error('Du måste vara inloggad för att bjuda in.');
   }
-  // Prefer secure RPC that bypasses RLS via SECURITY DEFINER on the server
-  const { data, error } = await supabase.rpc('create_competition_invite', {
+  // Use the new invite_to_competition RPC that checks permissions
+  const { error } = await supabase.rpc('invite_to_competition', {
     p_competition_id: competitionId,
     p_invited_user_id: invitedUserId,
   });
   if (error) {
     throw new Error(error.message);
   }
-  return data as CompetitionInvite;
 }
 
 export async function acceptInvite(inviteId: string): Promise<void> {

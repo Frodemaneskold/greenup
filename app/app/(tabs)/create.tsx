@@ -151,7 +151,7 @@ export default function CreateScreen() {
         style={StyleSheet.absoluteFill}
       />
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 56, paddingBottom: 24 + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 56, paddingBottom: 100 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >

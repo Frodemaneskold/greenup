@@ -3,13 +3,16 @@ import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator,
 import { Stack, router } from 'expo-router';
 import { supabase } from '@/src/lib/supabase';
 import { setToken } from '@/lib/session';
-import { updateCurrentUser } from '@/lib/users-store';
+import { updateCurrentUser, setCurrentUser } from '@/lib/users-store';
+import { loadCompetitionsFromSupabase } from '@/lib/competitions-store';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const insets = useSafeAreaInsets();
 
   // Om användaren trycker Androids back-knapp på login -> gå till Hem
   useFocusEffect(
@@ -97,7 +100,20 @@ export default function LoginScreen() {
       const last = typeof meta.last_name === 'string' ? meta.last_name : '';
       const name = [first, last].filter(Boolean).join(' ') || trimmedEmail.split('@')[0];
       const uname = typeof meta.username === 'string' ? meta.username : trimmedEmail.split('@')[0];
-      updateCurrentUser({ name, username: uname });
+      
+      // Sätt hela användarobjektet med ID för att säkerställa att allt är korrekt
+      setCurrentUser({
+        id: authUser?.id || 'me',
+        name,
+        username: uname,
+        email: trimmedEmail,
+        createdAt: new Date().toISOString().slice(0, 10),
+        friendsCount: 0,
+      });
+      
+      // Ladda all användardata friskt
+      await loadCompetitionsFromSupabase();
+      
       // Navigera direkt till profilsidan
       router.replace('/(tabs)/acount');
     } catch (e: any) {
@@ -108,23 +124,17 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 56, paddingBottom: 16 + insets.bottom }]}>
       <Stack.Screen
         options={{
-          title: 'Logga in',
-          headerLeft: () => (
-            <TouchableOpacity
-              accessibilityLabel="Tillbaka"
-              onPress={() => {
-                router.replace('/');
-              }}
-              style={{ paddingHorizontal: 8, paddingVertical: 6 }}
-            >
-              <Text style={{ fontSize: 16 }}>‹ Hem</Text>
-            </TouchableOpacity>
-          ),
+          headerShown: false,
         }}
       />
+      
+      {/* Huvudrubrik */}
+      <Text style={styles.title}>Logga in</Text>
+      
+      {/* Login-formulär */}
       <View style={styles.card}>
         <Text style={styles.label}>E-post</Text>
         <TextInput
@@ -147,24 +157,96 @@ export default function LoginScreen() {
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Logga in</Text>}
         </TouchableOpacity>
       </View>
-      <View style={{ marginTop: 12 }}>
-        <TouchableOpacity onPress={() => router.push('/register')} accessibilityLabel="Skapa konto">
-          <Text style={{ color: '#2f7147', fontWeight: '700', textAlign: 'center', textDecorationLine: 'underline', fontSize: 16 }}>
-            Skapa konto
-          </Text>
-        </TouchableOpacity>
+      
+      {/* Separator med text */}
+      <View style={styles.separatorContainer}>
+        <Text style={styles.separatorText}>— Har inget konto? —</Text>
       </View>
+      
+      {/* Skapa konto-knapp */}
+      <TouchableOpacity 
+        onPress={() => router.push('/register')} 
+        accessibilityLabel="Skapa konto"
+        style={styles.secondaryBtn}
+      >
+        <Text style={styles.secondaryBtnText}>Skapa konto</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#a7c7a3', padding: 16 },
-  card: { backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 12, padding: 16 },
-  label: { color: '#2a2a2a', marginTop: 8, marginBottom: 6, fontWeight: '600' },
-  input: { backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#e5e5e5' },
-  primaryBtn: { marginTop: 16, backgroundColor: '#2f7147', paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#6b9467', 
+    padding: 16,
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 24,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  card: { 
+    backgroundColor: 'rgba(255,255,255,0.92)', 
+    borderRadius: 12, 
+    padding: 16,
+  },
+  label: { 
+    color: '#2a2a2a', 
+    marginTop: 8, 
+    marginBottom: 6, 
+    fontWeight: '600',
+  },
+  input: { 
+    backgroundColor: '#fff', 
+    borderRadius: 8, 
+    paddingHorizontal: 12, 
+    paddingVertical: 10, 
+    borderWidth: 1, 
+    borderColor: '#e5e5e5',
+  },
+  primaryBtn: { 
+    marginTop: 16, 
+    backgroundColor: '#2f7147', 
+    paddingVertical: 14, 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+  },
+  primaryBtnText: { 
+    color: '#fff', 
+    fontWeight: '700', 
+    fontSize: 16,
+  },
+  separatorContainer: {
+    marginVertical: 24,
+    alignItems: 'center',
+  },
+  separatorText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  secondaryBtn: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  secondaryBtnText: {
+    color: '#2f7147',
+    fontWeight: '700',
+    fontSize: 16,
+  },
 });
 
 

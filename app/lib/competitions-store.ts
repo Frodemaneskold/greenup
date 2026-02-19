@@ -43,6 +43,7 @@ export async function createCompetition(input: {
   description?: string;
   startDate?: string;
   endDate?: string;
+  invitePolicy?: 'owner_only' | 'all_members';
 }) {
   // Ensure we use Supabase auth user id for RLS
   const { data: meData } = await supabase.auth.getUser();
@@ -51,33 +52,27 @@ export async function createCompetition(input: {
     throw new Error('Du måste vara inloggad för att skapa en tävling.');
   }
   const me = getCurrentUser();
-  const creatorId = meAuth.id;
+  
+  // Use RPC to create competition (handles owner_id and invite_policy server-side)
+  const { data, error } = await supabase.rpc('create_competition', {
+    p_name: input.name,
+    p_description: input.description ?? null,
+    p_start_date: input.startDate ?? null,
+    p_end_date: input.endDate ?? null,
+    p_invite_policy: input.invitePolicy ?? 'owner_only',
+  });
+  
+  if (error) {
+    throw new Error(error.message);
+  }
+  
+  const newId = data as string;
   const today = new Date();
   const yyyy = today.getFullYear();
   const mm = String(today.getMonth() + 1).padStart(2, '0');
   const dd = String(today.getDate()).padStart(2, '0');
   const updatedAt = `${yyyy}-${mm}-${dd}`;
-  // Create in Supabase; if it fails, propagate error (no offline fallback)
-  const { data, error } = await supabase
-    .from('competitions')
-    .insert({
-      name: input.name,
-      description: input.description ?? null,
-      start_date: input.startDate ?? null,
-      end_date: input.endDate ?? null,
-      created_by: creatorId,
-    })
-    .select('id, name, description, start_date, end_date')
-    .single();
-  if (error) {
-    throw new Error(error.message);
-  }
-  const newId = (data as any).id as string;
-  // Add creator as participant (insert-self policy)
-  await supabase.from('competition_participants').insert({
-    competition_id: newId,
-    user_id: creatorId,
-  });
+  
   const newComp: Competition = {
     id: newId,
     name: input.name,
@@ -87,6 +82,7 @@ export async function createCompetition(input: {
     participants: [{ id: me.id, name: me.name || 'Du', co2ReducedKg: 0 }],
     updatedAt,
   };
+  
   // Refresh from server to ensure consistency
   await loadCompetitionsFromSupabase();
   startCo2Sync();
@@ -167,19 +163,33 @@ function startCo2Sync() {
 export async function loadCompetitionsFromSupabase(): Promise<void> {
   try {
     const me = getCurrentUser();
+    // First get all competitions
     const { data: comps, error } = await supabase
       .from('competitions')
       .select('id, name, description, start_date, end_date, updated_at')
       .order('updated_at', { ascending: false });
     if (error) throw error;
-    const compIds = (comps ?? []).map((c: any) => c.id as string);
+    
+    // Filter out competitions where current user has left
+    let compIds = (comps ?? []).map((c: any) => c.id as string);
+    if (compIds.length > 0) {
+      const { data: myParticipations } = await supabase
+        .from('competition_participants')
+        .select('competition_id')
+        .eq('user_id', me.id)
+        .in('competition_id', compIds)
+        .not('left_at', 'is', null);
+      const leftCompIds = new Set((myParticipations ?? []).map((p: any) => p.competition_id as string));
+      compIds = compIds.filter(id => !leftCompIds.has(id));
+    }
     let participantsByComp: Record<string, string[]> = {};
     let allUserIds = new Set<string>();
     if (compIds.length) {
       const { data: parts } = await supabase
         .from('competition_participants')
         .select('competition_id, user_id')
-        .in('competition_id', compIds);
+        .in('competition_id', compIds)
+        .is('left_at', null);
       participantsByComp = {};
       (parts ?? []).forEach((row: any) => {
         const cid = row.competition_id as string;
@@ -205,30 +215,32 @@ export async function loadCompetitionsFromSupabase(): Promise<void> {
         idToName[row.id as string] = { name: String(full), username: String(uname) };
       });
     }
-    const mapped: Competition[] = (comps ?? []).map((row: any) => {
-      const d = new Date(row.updated_at as string);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const ids = participantsByComp[row.id as string] ?? [me.id];
-      const participants: Participant[] = ids.map((uid: string) => ({
-        id: uid,
-        name:
-          uid === me.id
-            ? (me.name || 'Du')
-            : (idToName[uid]?.name ?? uid.slice(0, 6)),
-        co2ReducedKg: 0,
-      }));
-      return {
-        id: row.id as string,
-        name: row.name as string,
-        description: (row.description as string | null) ?? undefined,
-        startDate: (row.start_date as string | null) ?? undefined,
-        endDate: (row.end_date as string | null) ?? undefined,
-        participants,
-        updatedAt: `${yyyy}-${mm}-${dd}`,
-      };
-    });
+    const mapped: Competition[] = (comps ?? [])
+      .filter((row: any) => compIds.includes(row.id as string))
+      .map((row: any) => {
+        const d = new Date(row.updated_at as string);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const ids = participantsByComp[row.id as string] ?? [me.id];
+        const participants: Participant[] = ids.map((uid: string) => ({
+          id: uid,
+          name:
+            uid === me.id
+              ? (me.name || 'Du')
+              : (idToName[uid]?.name ?? uid.slice(0, 6)),
+          co2ReducedKg: 0,
+        }));
+        return {
+          id: row.id as string,
+          name: row.name as string,
+          description: (row.description as string | null) ?? undefined,
+          startDate: (row.start_date as string | null) ?? undefined,
+          endDate: (row.end_date as string | null) ?? undefined,
+          participants,
+          updatedAt: `${yyyy}-${mm}-${dd}`,
+        };
+      });
     competitions = mapped;
     notify();
     startCo2Sync();
@@ -243,11 +255,13 @@ export async function loadCompetitionsFromSupabase(): Promise<void> {
 }
 
 let listRealtimeStarted = false;
+let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
+
 function startCompetitionsRealtime() {
   if (listRealtimeStarted) return;
   listRealtimeStarted = true;
   try {
-    const channel = supabase
+    realtimeChannel = supabase
       .channel('realtime:competitions:list')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'competitions' }, () => {
         void loadCompetitionsFromSupabase();
@@ -256,10 +270,23 @@ function startCompetitionsRealtime() {
         void loadCompetitionsFromSupabase();
       })
       .subscribe();
-    // no need to hold reference; supabase client manages channels globally
   } catch {
     // ignore
   }
+}
+
+export function resetCompetitionsStore() {
+  competitions = [];
+  co2SyncStarted = false;
+  listRealtimeStarted = false;
+  
+  // Rensa realtime-prenumeration
+  if (realtimeChannel) {
+    supabase.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+  
+  listeners.clear();
 }
 
 

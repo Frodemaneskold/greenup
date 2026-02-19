@@ -1,10 +1,10 @@
-import { Tabs, Link } from 'expo-router';
+import { Tabs } from 'expo-router';
 import React from 'react';
-import { StyleSheet, View, TouchableOpacity, Image } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
@@ -12,7 +12,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      initialRouteName="index"
+      initialRouteName="home"
       screenOptions={{
         tabBarActiveTintColor: '#ffffff',
         tabBarInactiveTintColor: 'rgba(255,255,255,0.7)',
@@ -38,47 +38,19 @@ export default function TabLayout() {
           </>
         ),
       }}>
+      {/* Hidden redirect screen for root path */}
       <Tabs.Screen
         name="index"
         options={{
+          href: null, // Hide from tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="home"
+        options={{
           title: 'Hem',
-          headerShown: true,
-          headerTransparent: true,
-          headerStyle: { backgroundColor: 'transparent' },
-          headerTitleStyle: { color: '#1f1f1f' },
-          headerTintColor: '#1f1f1f',
-          headerShadowVisible: false,
-          headerRight: () => (
-            <Link href="/notifications" asChild>
-              <TouchableOpacity
-                accessibilityLabel="Visa notiser"
-                style={{
-                  backgroundColor: '#2f7147',
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Image
-                  source={{
-                    uri: 'https://img.icons8.com/?size=100&id=5lr6xIUAwiha&format=png&color=000000',
-                  }}
-                  style={{ width: 20, height: 20 }}
-                  resizeMode="contain"
-                />
-              </TouchableOpacity>
-            </Link>
-          ),
           tabBarIcon: ({ color }) => (
-            <Image
-              source={{
-                uri: 'https://img.icons8.com/?size=100&id=8xhovyHdOQzF&format=png&color=000000',
-              }}
-              style={{ width: 28, height: 28, tintColor: color }}
-              resizeMode="contain"
-            />
+            <FontAwesome6 name="house" size={24} color={color} />
           ),
         }}
       />
@@ -87,13 +59,7 @@ export default function TabLayout() {
         options={{
           title: 'Tävlingar',
           tabBarIcon: ({ color }) => (
-            <Image
-              source={{
-                uri: 'https://img.icons8.com/?size=100&id=0mAtpPoNoAEd&format=png&color=000000',
-              }}
-              style={{ width: 28, height: 28, tintColor: color }}
-              resizeMode="contain"
-            />
+            <FontAwesome6 name="trophy" size={24} color={color} />
           ),
         }}
       />
@@ -108,13 +74,7 @@ export default function TabLayout() {
           headerTintColor: '#1f1f1f',
           headerShadowVisible: false,
           tabBarIcon: ({ color }) => (
-            <Image
-              source={{
-                uri: 'https://img.icons8.com/?size=100&id=GqJpEbXPcmLg&format=png&color=000000',
-              }}
-              style={{ width: 28, height: 28, tintColor: color }}
-              resizeMode="contain"
-            />
+            <FontAwesome6 name="circle-plus" size={24} color={color} />
           ),
         }}
       />
@@ -130,13 +90,7 @@ export default function TabLayout() {
           headerTintColor: '#1f1f1f',
           headerShadowVisible: false,
           tabBarIcon: ({ color }) => (
-            <Image
-              source={{
-                uri: 'https://img.icons8.com/?size=100&id=40JxrZB76JLv&format=png&color=000000',
-              }}
-              style={{ width: 28, height: 28, tintColor: color }}
-              resizeMode="contain"
-            />
+            <FontAwesome6 name="circle-info" size={24} color={color} />
           ),
         }}
       />
@@ -145,13 +99,7 @@ export default function TabLayout() {
         options={{
           title: 'Profil',
           tabBarIcon: ({ color }) => (
-            <Image
-              source={{
-                uri: 'https://img.icons8.com/?size=100&id=p8UFrp2VUgHR&format=png&color=000000',
-              }}
-              style={{ width: 28, height: 28, tintColor: color }}
-              resizeMode="contain"
-            />
+            <FontAwesome6 name="user-large" size={24} color={color} />
           ),
         }}
       />

@@ -85,4 +85,18 @@ export async function sendInvites(_competitionId: string, _targets: InviteTarget
   // In a real app, send to backend
 }
 
+export function resetUserStore() {
+  me = {
+    id: 'me',
+    name: '',
+    username: '',
+    email: '',
+    avatarUrl: undefined,
+    createdAt: '2025-10-01',
+    friendsCount: 0,
+  };
+  friends = [];
+  notify();
+}
+
 

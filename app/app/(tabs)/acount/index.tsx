@@ -10,6 +10,7 @@ import { useHeaderHeight } from '@react-navigation/elements';
 import { isLoggedIn } from '@/lib/session';
 import { supabase } from '@/src/lib/supabase';
 import { Image } from 'expo-image';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import {
   DEFAULT_PROFILE_BG,
   PROFILE_BACKGROUNDS_PORTRAIT,
@@ -141,7 +142,10 @@ export default function AccountScreen() {
       if (!sess.session) {
         const ok = await isLoggedIn();
         if (!ok) {
-          router.replace('/login');
+          // Små delay för att säkerställa att router är redo
+          setTimeout(() => {
+            router.replace('/login');
+          }, 100);
           return;
         }
       }
@@ -319,12 +323,7 @@ export default function AccountScreen() {
           headerRight: () => (
             <Link href="/(tabs)/acount/settings" asChild>
               <TouchableOpacity style={styles.headerBtn} accessibilityLabel="Profilinställningar">
-                <Image
-                  source={{
-                    uri: 'https://img.icons8.com/?size=100&id=xyFoc6U1Hu3c&format=png&color=000000',
-                  }}
-                  style={{ width: 18, height: 18, tintColor: '#fff' }}
-                />
+                <FontAwesome6 name="gear" size={18} color="#fff" />
               </TouchableOpacity>
             </Link>
           ),
